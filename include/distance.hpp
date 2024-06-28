@@ -1,14 +1,9 @@
 #pragma once
-#include <span>
+#include "distance/generic.hpp"
 
-namespace pickle
-{
-    template<class T, std::size_t Extend = std::dynamic_extent>
-    float L1(const std::span<T, Extend> va, const std::span<T, Extend> vb);
-    
-    template<class T, std::size_t Extend = std::dynamic_extent>
-    float L2(const std::span<T, Extend> va, const std::span<T, Extend> vb);
-
-    template<class T, std::size_t Extend = std::dynamic_extent>
-    float Ip(const std::span<T, Extend> va, const std::span<T, Extend> vb);
+namespace pickle {
+    template<class T, DistanceFunction DF = DistanceFunction::RUNTIME, std::size_t Extend = std::dynamic_extent>
+    float Distance(std::span<T, Extend> va, std::span<T, Extend> vb, DistanceFunction df) {
+        return generic::Distance<T, DF, Extend>(va, vb, df);
+    };
 }
