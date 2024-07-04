@@ -1,13 +1,14 @@
 #pragma once
-#include "graph.hpp"
-#include "distance.hpp"
+
+#include <cassert>
+#include <omp.h>
+#include <random>
+#include <stack>
+#include <atomic>
+
+#include "nsw_graph.hpp"
+#include "nsw.hpp"
 
 namespace pickle {
-    template<class T, std::size_t Dim = std::dynamic_extent>
-    DynamicNSWGraphPtr BuildNSW(DistanceFunction df,
-                                size_t ef,
-                                size_t max_degree,
-                                size_t dim,
-                                const std::vector<external_id_t> &external_ids,
-                                std::span<T> all_data);
-}
+
+} // namespace pickle

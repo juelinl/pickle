@@ -7,8 +7,12 @@
 
 #include "common.hpp"
 #include <cassert>
-
 namespace pickle::generic {
+    template<class T>
+    inline T abs(T a) {
+        return a < 0 ? 0 - a : a;
+    };
+
     template<class T, std::size_t Extend = std::dynamic_extent>
     float L1(const std::span<T, Extend> va, const std::span<T, Extend> vb) {
         assert(va.size() == vb.size());
@@ -16,7 +20,7 @@ namespace pickle::generic {
         dist_type res{0};
 #pragma unroll
         for (size_t i = 0; i < va.size(); i++) {
-            res += std::abs(va[i] - vb[i]);
+            res += abs(va[i] - vb[i]);
         }
         return res;
     };
