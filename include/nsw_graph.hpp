@@ -1,38 +1,24 @@
 #pragma once
 
-//#include <cstdint>
-//#include <span>
-//#include <atomic>
-//#include <shared_mutex>
-//#include <thread>
 #include <mutex>
 #include <vector>
 #include <cassert>
 #include <memory>
 #include <iostream>
 #include <map>
-#include <unordered_map>
 #include <algorithm>
 #include <cstring>
 #include "common.hpp"
 #include "queue.hpp"
 
 namespace pickle {
+    
+    class Serializer;
 
-    // graph interface
-//    class GraphIF {
-//    public:
-//        virtual ~GraphIF() = default;
-//        virtual external_id_t GetExternalId(internal_id_t vid) = 0;
-//        virtual internal_id_t GetEntryInternalId(external_id_t external_id) = 0;
-//        virtual internal_id_t GetInternalId(external_id_t external_id) = 0;
-//        virtual std::span<internal_id_t> GetNeighborsID(internal_id_t vid) = 0;
-//        virtual void Init(size_t max_node_degree, size_t max_num_node) = 0;
-//    };
-//    using GraphIFPtr = std::shared_ptr<GraphIF>;
-
-    class Graph {
+    class DynamicNSWGraph {
     private:
+        friend Serializer;
+
         constexpr const static size_t _num_mutex{8192};
 
         size_t _max_degree{0};
@@ -42,7 +28,7 @@ namespace pickle {
         std::mutex _id_increment_mutex;
 
         std::map<external_id_t, internal_id_t> _external_to_internal;
-//        std::unordered_map<external_id_t, internal_id_t> _external_to_internal;
+        std::vector<internal_id_t > _external_to_internal_lookup;
         std::vector<internal_id_t> _adjacent_lists;
         std::vector<distance_t> _distance_lists;
         std::vector<internal_id_t> _internal_degrees;
@@ -64,7 +50,7 @@ namespace pickle {
         };
 
     public:
-        Graph() = default;
+        DynamicNSWGraph() = default;
 
         void Init(size_t max_node_degree, size_t node_capacity) {
             Clear();
@@ -76,6 +62,23 @@ namespace pickle {
             _internal_degrees.resize(_node_capacity, 0);
         };
 
+        void CreateMap() {
+            if (_external_to_internal.size() < _next_internal_id) {
+                _external_to_internal.clear();
+                for (internal_id_t i = 0; i < _next_internal_id; i++) {
+                    _external_to_internal.emplace(_external_ids[i],i);
+                }
+
+                auto max_external_id = *std::max_element(_external_ids.begin(), _external_ids.end());
+                if (max_external_id <= 2 * _node_capacity) {
+                    _external_to_internal_lookup.clear();
+                    _external_to_internal_lookup.resize(max_external_id + 1, empty_internal_id);
+                    for (internal_id_t i = 0; i < _next_internal_id; i++) {
+                        _external_to_internal_lookup.at(_external_ids[i]) = i;
+                    }
+                }
+            }
+        }
         external_id_t GetExternalId(internal_id_t vid) const {
             return _external_ids.at(vid);
         };
@@ -95,8 +98,13 @@ namespace pickle {
         };
 
         internal_id_t GetInternalId(external_id_t external_id) const {
-            assert(_external_to_internal.contains(external_id));
-            return _external_to_internal.at(external_id);
+            if (_external_to_internal_lookup.empty()) {
+                assert(_external_to_internal.contains(external_id));
+                return _external_to_internal.at(external_id);
+            } else {
+                assert(_external_to_internal_lookup.at(external_id) != empty_internal_id);
+                return _external_to_internal_lookup.at(external_id);
+            }
         };
 
         internal_id_t GetEntryInternalId(external_id_t external_entry_id = empty_external_id) const {
@@ -152,7 +160,7 @@ namespace pickle {
                 return;
             }
 
-            // Always use greedy approach for updating edges
+            // Greedy approach for updating edges
             // The greedy approach always keeps top max_degree closest edges
             // keep adjacency list and distance sorted, small distance edges will be stored in the front
             auto dist_start = &_distance_lists.at(vid * _max_degree);
@@ -175,11 +183,6 @@ namespace pickle {
                 dist_start[offset] = edge._distance;
                 _internal_degrees.at(vid) += v_deg < _max_degree;
             }
-
-
-//            for (int i = 0; i < _internal_degrees.at(vid); i++) {
-//                assert(edge_start[i] >= 0);
-//            }
         };
 
         internal_id_t GetNumNodes() const {
@@ -191,20 +194,22 @@ namespace pickle {
         }
     };
 
-    using DynamicNSWGraphPtr = std::shared_ptr<Graph>;
+    using DynamicNSWGraphPtr = std::shared_ptr<DynamicNSWGraph>;
 
     template<class T, std::size_t Dim>
-    inline std::span<T, Dim> GetDataForExternalID(external_id_t q_id, size_t dim, std::span<T> all_data) {
+    inline std::span<const T, Dim> GetDataForExternalID(external_id_t q_id, size_t dim, std::span<const T> all_data) {
         auto start = all_data.data() + q_id * dim;
-        std::span<T, Dim> data{start, dim};
+        std::span<const T, Dim> data{start, dim};
         return data;
     };
 
     template<class T, std::size_t Dim>
-    inline std::span<T, Dim> GetDataForInternalID(internal_id_t vid, size_t dim, std::span<T> all_data,
+    inline std::span<const T, Dim> GetDataForInternalID(internal_id_t vid, size_t dim, std::span<const T> all_data,
                                                   const DynamicNSWGraphPtr &graph) {
         auto start = all_data.data() + graph->GetExternalId(vid) * dim;
-        std::span<T, Dim> data{start, dim};
+        std::span<const T, Dim> data{start, dim};
         return data;
     };
+
+
 }

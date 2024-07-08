@@ -40,8 +40,7 @@ namespace pickle
         std::vector<int> res(N);
         std::uniform_real_distribution<double> distribution(0.0, 1.0);
         std::mt19937 rng;
-
-
+        
 #pragma omp parallel private(rng)
         rng.seed(std::random_device{}());
 
@@ -63,5 +62,21 @@ namespace pickle
 
         return res;
     }
+
+    template <class T> std::vector<T> getRandomIndices(size_t N) {
+        std::vector<T> indices(N);
+        // Fill the vector with 0, 1, ..., N-1
+        for (size_t i = 0; i < N; ++i) {
+            indices[i] = i;
+        }
+
+        // Obtain a time-based seed
+        unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+        std::default_random_engine rng(seed);
+
+        // Shuffle the vector using the Fisher-Yates algorithm
+        std::shuffle(indices.begin(), indices.end(), rng);
+        return indices;
+    };
 }
 #endif //PICKLE_UTIL_HPP

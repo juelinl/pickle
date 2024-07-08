@@ -13,5 +13,4 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -funsa
 include_directories("${CMAKE_SOURCE_DIR}/include")
 find_package(OpenMP REQUIRED)
 link_libraries(OpenMP::OpenMP_CXX)
-add_subdirectory(src)
-add_subdirectory(program)
+add_subdirectory(pybind)

@@ -36,7 +36,7 @@ namespace pickle {
     }
 
     template<class T, size_t Dim>
-    inline std::vector<Entry> SelectNeighborsHeuristic(DistanceFunction df, size_t dim, size_t top_k, MaxQueue queue, std::span<T> all_data, const DynamicNSWGraphPtr& graph, bool keepPruned = true) {
+    inline std::vector<Entry> SelectNeighborsHeuristic(DistanceFunction df, size_t dim, size_t top_k, MaxQueue queue, std::span<const T> all_data, const DynamicNSWGraphPtr& graph, bool keepPruned = true) {
         size_t num_entry = queue.size();
         MinQueue W;
         MinQueue Wd;
@@ -51,11 +51,11 @@ namespace pickle {
             auto v1 = W.top(); // v1 is the closest candidate to the query in the queue
             auto v1_q_dist = v1._distance;
             auto v1_id = v1._vid;
-            std::span<T, Dim> v1_data = GetDataForInternalID<T, Dim>(v1_id, dim, all_data, graph);
+            std::span<const T, Dim> v1_data = GetDataForInternalID<T, Dim>(v1_id, dim, all_data, graph);
             bool insert_v1{true};
             for (auto& v2: R) {
                 auto v2_id = v2._vid; // v2 is the nearest neighbors to return
-                std::span<T, Dim> v2_data = GetDataForInternalID<T, Dim>(v2_id, dim, all_data, graph);
+                std::span<const T, Dim> v2_data = GetDataForInternalID<T, Dim>(v2_id, dim, all_data, graph);
                 auto v1_v2_dist = Distance(v1_data, v2_data, df);
                 // v1 is only inserted if it is closer to the query than any v2
                 // this step avoids adding only nearby nodes to the query's adj list
@@ -86,10 +86,10 @@ namespace pickle {
     template<class T, std::size_t Dim>
     external_id_t SlideNSWLayer(DistanceFunction df, size_t dim,
                                 internal_id_t entry_id,
-                                std::span<T, Dim> q_data, std::span<T> all_data,
+                                std::span<const T, Dim> q_data, std::span<const T> all_data,
                                 const DynamicNSWGraphPtr &graph) {
 
-        std::span<T, Dim> entry_data = GetDataForInternalID<T, Dim>(entry_id, dim, all_data, graph);
+        std::span<const T, Dim> entry_data = GetDataForInternalID<T, Dim>(entry_id, dim, all_data, graph);
         distance_t c_dist = Distance(q_data, entry_data, df);
         auto c_id = entry_id;
         bool updated = true;
@@ -97,7 +97,7 @@ namespace pickle {
             updated = false;
             auto adjlist = graph->GetNeighborsID(c_id);
             for (internal_id_t vid: adjlist) {
-                std::span<T, Dim> v_data = GetDataForInternalID<T, Dim>(vid, dim, all_data, graph);
+                std::span<const T, Dim> v_data = GetDataForInternalID<T, Dim>(vid, dim, all_data, graph);
                 auto v_dist = Distance(q_data, v_data, df);
                 if (v_dist < c_dist) {
                     c_id = vid;
@@ -114,8 +114,8 @@ namespace pickle {
                                  size_t dim,
                                  size_t entry_layer,
                                  size_t stop_layer,
-                                 std::span<T, Dim> q_data,
-                                 std::span<T> all_data,
+                                 std::span<const T, Dim> q_data,
+                                 std::span<const T> all_data,
                                  const std::vector<DynamicNSWGraphPtr> &graphs) {
 
         assert(entry_layer < graphs.size());
@@ -134,12 +134,12 @@ namespace pickle {
     template<class T, std::size_t Dim>
     std::vector<Entry> SearchNSWLayerHeuristic(DistanceFunction df, size_t top_k, size_t ef,
                                                size_t dim, internal_id_t entry_id,
-                                               std::span<T, Dim> q_data, std::span<T> all_data,
+                                               std::span<const T, Dim> q_data, std::span<const T> all_data,
                                                const DynamicNSWGraphPtr &graph) {
         MinQueue top_candidates;    // min first heap
         MaxQueue nearest_neighbors; // max first heap
 
-        std::span<T, Dim> entry_data = GetDataForInternalID<T, Dim>(entry_id, dim, all_data, graph);
+        std::span<const T, Dim> entry_data = GetDataForInternalID<T, Dim>(entry_id, dim, all_data, graph);
         auto entry_distance = Distance(q_data, entry_data, df);
         top_candidates.emplace(entry_distance, entry_id);
         nearest_neighbors.emplace(entry_distance, entry_id);
@@ -157,7 +157,7 @@ namespace pickle {
             for (internal_id_t vid: adjlist) {
                 if (visited.at(vid)) continue;
                 visited.at(vid) = true;
-                std::span<T, Dim> v_data = GetDataForInternalID<T, Dim>(vid, dim, all_data, graph);
+                std::span<const T, Dim> v_data = GetDataForInternalID<T, Dim>(vid, dim, all_data, graph);
                 auto v_dist = Distance(q_data, v_data, df);
                 if (nearest_neighbors.size() < ef ||
                     nearest_neighbors.top()._distance > v_dist) {
@@ -175,12 +175,12 @@ namespace pickle {
     template<class T, std::size_t Dim>
     std::vector<Entry> SearchNSWLayerSimple(DistanceFunction df, size_t top_k, size_t ef,
                                       size_t dim, internal_id_t entry_id,
-                                      std::span<T, Dim> q_data, std::span<T> all_data,
+                                      std::span<const T, Dim> q_data, std::span<const T> all_data,
                                       const DynamicNSWGraphPtr &graph) {
         MinQueue top_candidates;    // min first heap
         MaxQueue nearest_neighbors; // max first heap
 
-        std::span<T, Dim> entry_data = GetDataForInternalID<T, Dim>(entry_id, dim, all_data, graph);
+        std::span<const T, Dim> entry_data = GetDataForInternalID<T, Dim>(entry_id, dim, all_data, graph);
         auto entry_distance = Distance(q_data, entry_data, df);
         top_candidates.emplace(entry_distance, entry_id);
         nearest_neighbors.emplace(entry_distance, entry_id);
@@ -198,7 +198,7 @@ namespace pickle {
             for (internal_id_t vid: adjlist) {
                 if (visited.at(vid)) continue;
                 visited.at(vid) = true;
-                std::span<T, Dim> v_data = GetDataForInternalID<T, Dim>(vid, dim, all_data, graph);
+                std::span<const T, Dim> v_data = GetDataForInternalID<T, Dim>(vid, dim, all_data, graph);
                 auto v_dist = Distance(q_data, v_data, df);
                 if (nearest_neighbors.size() < ef ||
                     nearest_neighbors.top()._distance > v_dist) {
@@ -216,7 +216,7 @@ namespace pickle {
     template<class T, std::size_t Dim = std::dynamic_extent>
     std::vector<Entry> SearchNSWLayersSimple(DistanceFunction df, size_t top_k, size_t ef,
                                        size_t dim, size_t entry_layer,
-                                       std::span<T, Dim> q_data, std::span<T> all_data,
+                                       std::span<const T, Dim> q_data, std::span<const T> all_data,
                                        const std::vector<DynamicNSWGraphPtr> &graphs) {
         assert(!graphs.empty());
         external_id_t external_entry_id{empty_external_id};
@@ -233,8 +233,8 @@ namespace pickle {
                                  size_t ef, size_t max_degree, size_t dim,
                                  internal_id_t entry_id,
                                  external_id_t q_id,
-                                 std::span<T, Dim> q_data,
-                                 std::span<T> all_data,
+                                 std::span<const T, Dim> q_data,
+                                 std::span<const T> all_data,
                                  DynamicNSWGraphPtr &graph) {
         assert(Dim == std::dynamic_extent || Dim == dim);
         assert(q_data.size() == dim);
@@ -264,8 +264,8 @@ namespace pickle {
                          size_t insert_level,
                          external_id_t external_entry_id,
                          external_id_t q_id,
-                         std::span<T, Dim> q_data,
-                         std::span<T> all_data,
+                         std::span<const T, Dim> q_data,
+                         std::span<const T> all_data,
                          const std::vector<DynamicNSWGraphPtr> &graphs) {
 
         assert(Dim == std::dynamic_extent || Dim == dim);
@@ -307,14 +307,14 @@ namespace pickle {
     template<class T, std::size_t Dim = std::dynamic_extent>
     DynamicNSWGraphPtr BuildNSWLayer(DistanceFunction df, size_t ef, size_t max_degree, size_t dim,
                                      const std::vector<external_id_t> &external_ids,
-                                     std::span<T> all_data) {
+                                     std::span<const T> all_data) {
         assert(Dim == std::dynamic_extent || Dim == dim);
-        auto graph = std::make_shared<Graph>();
+        auto graph = std::make_shared<DynamicNSWGraph>();
         graph->Init(max_degree, external_ids.size());
 
 #pragma omp parallel for schedule(static, 128)
         for (external_id_t q_id: external_ids) {
-            std::span<T, Dim> q_data = GetDataForExternalID<T, Dim>(q_id, dim, all_data);
+            std::span<const T, Dim> q_data = GetDataForExternalID<T, Dim>(q_id, dim, all_data);
             internal_id_t entry_id = graph->GetEntryInternalId();
             InsertNSWLayer(df, ef, max_degree, dim, entry_id, q_id, q_data, all_data, graph);
         }
@@ -324,7 +324,7 @@ namespace pickle {
     template<class T, std::size_t Dim = std::dynamic_extent>
     std::vector<DynamicNSWGraphPtr> BuildNSWLayers(DistanceFunction df, size_t ef, size_t max_degree, size_t dim,
                                                    const std::vector<external_id_t> &external_ids,
-                                                   std::span<T> all_data) {
+                                                   std::span<const T> all_data) {
 
         auto cumulative_probability = get_cumulative_probability(max_degree);
         auto start_layers = get_random_levels(external_ids.size(), cumulative_probability);
@@ -341,7 +341,7 @@ namespace pickle {
         std::vector<DynamicNSWGraphPtr> graphs;
         for (size_t i = 0; i <= max_layer; i++) {
             size_t M = i == 0 ? max_degree * 2 : max_degree;
-            graphs.push_back(std::make_shared<Graph>());
+            graphs.push_back(std::make_shared<DynamicNSWGraph>());
             graphs.at(i)->Init(M, num_nodes[i]);
         }
 
@@ -351,7 +351,7 @@ namespace pickle {
             external_id_t q_id = external_ids.at(i);
             external_id_t external_entry_id{empty_external_id};
 
-            std::span<T, Dim> q_data = GetDataForExternalID<T, Dim>(q_id, dim, all_data);
+            std::span<const T, Dim> q_data = GetDataForExternalID<T, Dim>(q_id, dim, all_data);
             int l = start_layers.at(i); // layers to insert: 0, 1, ... l
             int L = max_level.load(); // current max layer number in the hnsw index: 0, 1, ... L
 

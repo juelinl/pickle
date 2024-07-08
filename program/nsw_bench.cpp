@@ -6,7 +6,11 @@
 #include "dataloader.hpp"
 #include "nsw.hpp"
 #include "timer.hpp"
+#include "serializer.hpp"
+
 #include <iostream>
+#include <filesystem>
+#include <omp.h>
 
 using namespace pickle;
 
@@ -106,31 +110,44 @@ int main(int argc, char *argv[]) {
 
     Timer timer;
     timer.start();
+
     auto feat = LoadArray2D(config.feat_path, config.max_elements);
     auto dim = feat->_shape[1];
     timer.end();
     std::cout << "Load feature in " << timer.seconds() << "secs" << std::endl;
 
-    timer.start();
-    std::vector<external_id_t> external_ids =
-            getRandomIndices<external_id_t>(config.max_elements);
-    timer.end();
-    std::cout << "Get random indices in " << timer.seconds() << "secs" << std::endl;
-
-    timer.start();
     std::vector<DynamicNSWGraphPtr> graphs;
-    ATEN_DTYPE_SWITCH(feat->_data_type, DType, {
-//    auto graphs = BuildNSWLayer<DType>(config.df, config.ef_construction, config.M, dim,
-//                          external_ids, feat->span<DType>());
-        std::span<DType > all_data = feat->span<DType>();
-        graphs = BuildNSWLayers<DType>(config.df, config.ef_construction, config.M, dim,
-                                       external_ids, all_data);
 
+    if (config.index_path == "" || !std::filesystem::exists(config.index_path)) {
+        timer.start();
+        std::vector<external_id_t> external_ids =
+                getRandomIndices<external_id_t>(config.max_elements);
+        timer.end();
+        std::cout << "Get random indices in " << timer.seconds() << "secs" << std::endl;
 
-    });
-    timer.end();
-    std::cout << "Finished in " << timer.seconds() << " secs" << std::endl;
+        timer.start();
+        ATEN_DTYPE_SWITCH(feat->_data_type, DType, {
+            std::span<DType > all_data = feat->span<DType>();
+            graphs = BuildNSWLayers<DType>(config.df, config.ef_construction, config.M, dim,
+                                           external_ids, all_data);
+        });
 
+        timer.end();
+        std::cout << "Graph construction in " << timer.seconds() << " secs" << std::endl;
+        if (config.index_path != "") {
+            timer.start();
+            Serializer::to_disk(config.index_path, graphs);
+            timer.end();
+            std::cout << "Save graph to disk in " << timer.seconds() << " secs" << std::endl;
+        };
+    }
+
+    if (graphs.empty())  {
+        timer.start();
+        graphs = Serializer::from_disk(config.index_path);
+        timer.end();
+        std::cout << "Load graph from disk in " << timer.seconds() << " secs" << std::endl;
+    }
 
     if (config.query_path != "" && config.truth_path != "") {
         auto query = LoadArray2D(config.query_path);

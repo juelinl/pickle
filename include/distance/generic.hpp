@@ -14,7 +14,7 @@ namespace pickle::generic {
     };
 
     template<class T, std::size_t Extend = std::dynamic_extent>
-    float L1(const std::span<T, Extend> va, const std::span<T, Extend> vb) {
+    float L1(std::span<const T, Extend> va, std::span<const T, Extend> vb) {
         assert(va.size() == vb.size());
         using dist_type = static_switch<IsTFloat<T>(), int, float>::type;
         dist_type res{0};
@@ -26,7 +26,7 @@ namespace pickle::generic {
     };
 
     template<class T, std::size_t Extend = std::dynamic_extent>
-    float L2(const std::span<T, Extend> va, const std::span<T, Extend> vb) {
+    float L2(std::span<const T, Extend> va, std::span<const T, Extend> vb) {
         assert(va.size() == vb.size());
         using dist_type = static_switch<IsTFloat<T>(), int, float>::type;
         dist_type res{0};
@@ -39,7 +39,7 @@ namespace pickle::generic {
     };
 
     template<class T, std::size_t Extend = std::dynamic_extent>
-    float IP(const std::span<T, Extend> va, const std::span<T, Extend> vb) {
+    float IP(std::span<const T, Extend> va, std::span<const T, Extend> vb) {
         assert(va.size() == vb.size());
         using dist_type = static_switch<IsTFloat<T>(), int, float>::type;
         dist_type res{0};
@@ -51,7 +51,7 @@ namespace pickle::generic {
     };
 
     template<class T, DistanceFunction DF = DistanceFunction::RUNTIME, std::size_t Extend = std::dynamic_extent>
-    float Distance(std::span<T, Extend> va, std::span<T, Extend> vb, DistanceFunction df) {
+    float Distance(std::span<const T, Extend> va, std::span<const T, Extend> vb, DistanceFunction df) {
         if constexpr (DF == DistanceFunction::RUNTIME) {
             switch (df) {
                 case DistanceFunction::L1:
