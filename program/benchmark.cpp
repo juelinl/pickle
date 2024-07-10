@@ -127,9 +127,12 @@ int main(int argc, char *argv[]) {
 
         timer.start();
         ATEN_DTYPE_SWITCH(feat->_data_type, DType, {
-            std::span<DType > all_data = feat->span<DType>();
-            graphs = BuildNSWLayers<DType>(config.df, config.ef_construction, config.M, dim,
-                                           external_ids, all_data);
+            std::span<DType> all_data = feat->span<DType>();
+            graphs = BuildNSWLayers<DType>(config.df, config.ef_construction, config.M, dim, external_ids, all_data);
+//            ATEN_DIM_SWITCH(dim, DIM, {
+//                    std::span<DType> all_data = feat->span<DType>();
+//                    graphs = BuildNSWLayers<DType, DIM>(config.df, config.ef_construction, config.M, dim, external_ids, all_data);
+//            });
         });
 
         timer.end();
@@ -169,9 +172,10 @@ int main(int argc, char *argv[]) {
                 timer.start();
                 ATEN_DTYPE_SWITCH(query->_data_type, DType, {
                     for (int i = 0; i < num_queries; i++) {
-                        std::span<DType> q_data = query->get_span<DType>(i);
+                        constexpr size_t Dim = std::dynamic_extent;
+                        std::span<DType, Dim> q_data = query->get_span<DType, Dim>(i);
                         std::span<DType > all_data = feat->span<DType>();
-                        results.at(i) = SearchNSWLayersSimple<DType, std::dynamic_extent>(config.df, top_k, ef_search, dim, entry_layer, q_data, all_data, graphs);
+                        results.at(i) = SearchNSWLayersSimple<DType, Dim>(config.df, top_k, ef_search, dim, entry_layer, q_data, all_data, graphs);
                     }
                 });
                 timer.end();

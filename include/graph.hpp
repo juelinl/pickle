@@ -15,6 +15,7 @@ namespace pickle {
     
     class Serializer;
 
+
     class DynamicNSWGraph {
     private:
         friend Serializer;
@@ -23,12 +24,13 @@ namespace pickle {
 
         size_t _max_degree{0};
         size_t _node_capacity{0};
+        bool _is_base{false};
         internal_id_t _entry_internal_id{0};
         internal_id_t _next_internal_id{0};
         std::mutex _id_increment_mutex;
 
         std::map<external_id_t, internal_id_t> _external_to_internal;
-        std::vector<internal_id_t > _external_to_internal_lookup;
+        std::vector<internal_id_t > _external_to_internal_base;
         std::vector<internal_id_t> _adjacent_lists;
         std::vector<distance_t> _distance_lists;
         std::vector<internal_id_t> _internal_degrees;
@@ -52,33 +54,37 @@ namespace pickle {
     public:
         DynamicNSWGraph() = default;
 
-        void Init(size_t max_node_degree, size_t node_capacity) {
+        void Init(size_t max_node_degree, size_t node_capacity, bool is_base = false) {
             Clear();
+            _is_base = is_base;
             _max_degree = max_node_degree;
             _node_capacity = node_capacity;
             _adjacent_lists.resize(_node_capacity * _max_degree, empty_internal_id);
             _distance_lists.resize(_node_capacity * _max_degree, std::numeric_limits<distance_t>::max());
             _external_ids.resize(_node_capacity, empty_external_id);
             _internal_degrees.resize(_node_capacity, 0);
+            if (_is_base) {
+                _external_to_internal_base.resize(_node_capacity, empty_internal_id);
+            } else {
+                _rw_mutex = std::vector<std::mutex>(_node_capacity);
+            }
         };
 
         void CreateMap() {
-            if (_external_to_internal.size() < _next_internal_id) {
+            if (_is_base) {
+                _external_to_internal_base.clear();
+                _external_to_internal_base.resize(_node_capacity, empty_internal_id);
+                for (internal_id_t i = 0; i < _next_internal_id; i++) {
+                    _external_to_internal_base.at(_external_ids[i]) = i;
+                }
+            } else {
                 _external_to_internal.clear();
                 for (internal_id_t i = 0; i < _next_internal_id; i++) {
                     _external_to_internal.emplace(_external_ids[i],i);
                 }
-
-                auto max_external_id = *std::max_element(_external_ids.begin(), _external_ids.end());
-                if (max_external_id <= 2 * _node_capacity) {
-                    _external_to_internal_lookup.clear();
-                    _external_to_internal_lookup.resize(max_external_id + 1, empty_internal_id);
-                    for (internal_id_t i = 0; i < _next_internal_id; i++) {
-                        _external_to_internal_lookup.at(_external_ids[i]) = i;
-                    }
-                }
             }
-        }
+        };
+
         external_id_t GetExternalId(internal_id_t vid) const {
             return _external_ids.at(vid);
         };
@@ -88,22 +94,29 @@ namespace pickle {
             internal_id_t new_internal_id{empty_internal_id};
             {
                 std::unique_lock<std::mutex> guard{_id_increment_mutex};
-                assert(!_external_to_internal.contains(external_id));
                 new_internal_id = _next_internal_id++;
+            }
+
+            _external_ids.at(new_internal_id) = external_id;
+            if (_is_base) {
+                assert(_external_to_internal_base.at(external_id) == empty_internal_id);
+                _external_to_internal_base.at(external_id) = new_internal_id;
+            } else {
+                assert(!_external_to_internal.contains(external_id));
                 _external_to_internal.insert({external_id, new_internal_id});
-                _external_ids.at(new_internal_id) = external_id;
-                assert(_external_to_internal.contains(external_id));
             }
             return new_internal_id;
         };
 
         internal_id_t GetInternalId(external_id_t external_id) const {
-            if (_external_to_internal_lookup.empty()) {
-                assert(_external_to_internal.contains(external_id));
-                return _external_to_internal.at(external_id);
+            if (_is_base) {
+                auto id = _external_to_internal_base.at(external_id);
+                assert(id != empty_internal_id);
+                return id;
             } else {
-                assert(_external_to_internal_lookup.at(external_id) != empty_internal_id);
-                return _external_to_internal_lookup.at(external_id);
+                assert(_external_to_internal.contains(external_id));
+                auto id = _external_to_internal.at(external_id);
+                return id;
             }
         };
 
@@ -114,16 +127,20 @@ namespace pickle {
         };
 
         std::span<const internal_id_t> GetNeighborsID(internal_id_t vid) const {
-            auto start = &_adjacent_lists.at(_max_degree * vid);
-            auto end = start + _internal_degrees.at(vid);
-            return {start, end};
+//            auto start = &_adjacent_lists.at(_max_degree * vid);
+//            auto end = start + _internal_degrees.at(vid);
+//            return {start, end};
+            return {_adjacent_lists.data() + _max_degree * vid, (size_t) _internal_degrees.at(vid)};
         };
 
         std::span<const distance_t> GetNeighborsDistance(internal_id_t vid) const {
-            auto start = &_distance_lists.at(_max_degree * vid);
-            auto end = start + _internal_degrees.at(vid);
-            return {start, end};
+//            auto start = &_distance_lists.at(_max_degree * vid);
+//            auto end = start + _internal_degrees.at(vid);
+//            return {start, end};
+            return {_distance_lists.data() + _max_degree * vid, (size_t) _internal_degrees.at(vid)};
         };
+
+        bool IsBase() const {return _is_base;};
 
         // it should be called only once for each vertex
         void AddNode(internal_id_t vid, std::span<Entry> neighbors) {

@@ -1,7 +1,7 @@
 //
 // Created by juelin on 7/8/24.
 //
-#include "nsw_graph.hpp"
+#include "graph.hpp"
 #include "nsw.hpp"
 #include "timer.hpp"
 #include "util.hpp"
@@ -14,28 +14,6 @@
 namespace py = pybind11;
 
 namespace pickle {
-#define ATEN_DTYPE_SWITCH(val, DType, ...)                                     \
-  do {                                                                         \
-    if ((val) == "uint8") {                                            \
-      typedef uint8_t DType;                                                   \
-      { __VA_ARGS__ }                                                          \
-    } else if ((val) == "int8") {                                      \
-      typedef int8_t DType;                                                    \
-      { __VA_ARGS__ }                                                          \
-    } else if ((val) == "float16") {                                   \
-      typedef float16_t DType;                                                     \
-      { __VA_ARGS__ }                                                          \
-    } else if ((val) == "float32") {                                   \
-      typedef float DType;                                                 \
-      { __VA_ARGS__ }                                                          \
-    } else {                                                                   \
-      std::cerr << "DType can only be uint8, int8, float16, or float32\n";   \
-      std::cerr << "Unsupported dtype: " << val;   \
-      exit(-1);                                                                \
-    }                                                                          \
-  } while (0)
-
-
     struct HNSWGraph {
         std::vector<DynamicNSWGraphPtr> _graphs;
         size_t _search_ef{100};
@@ -79,7 +57,7 @@ namespace pickle {
             std::cout << "Get random indices in " << timer.seconds() << "secs" << std::endl;
 
             timer.start();
-            ATEN_DTYPE_SWITCH(dtype, T, {
+            ATEN_DSTR_SWITCH(dtype, T, {
                 size_t count = _data.nbytes() / sizeof(T);
                 ALWAYS_ASSERT(row * dim == count);
                 std::span<const T> all_data = {static_cast<const T *>(_data.data()), count};
@@ -106,7 +84,7 @@ namespace pickle {
 
             #pragma omp parallel for schedule(static, 1)
             for (size_t i = 0; i < num_query; i++) {
-                ATEN_DTYPE_SWITCH(dtype, T, {
+                ATEN_DSTR_SWITCH(dtype, T, {
                     size_t count = _data.nbytes() / sizeof(T);
                     std::span<const T> all_data = {static_cast<const T *>(_data.data()), count};
                     std::span<const T> q_data = {static_cast<const T *>(query.data(i)), dim};

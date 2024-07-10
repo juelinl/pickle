@@ -4,13 +4,12 @@
 
 #ifndef PICKLE_SERIALIZER_HPP
 #define PICKLE_SERIALIZER_HPP
-#include "nsw_graph.hpp"
+#include "graph.hpp"
 #include "common.hpp"
 #include <fstream>
 
 namespace pickle
 {
-
     inline void write_to(std::ofstream &file, auto data, long N) {
         file.write(reinterpret_cast<char*>(data), N);
     };
@@ -69,7 +68,7 @@ namespace pickle
             read_from(file, &num_nodes, sizeof(num_nodes));
             read_from(file, &max_degree, sizeof(max_degree));
             size_t num_edges = num_nodes * max_degree;
-            graph->Init(max_degree, num_nodes);
+            graph->Init(max_degree, num_nodes, i == 0);
             graph->_next_internal_id = num_nodes;
             read_from(file, graph->_external_ids.data(), sizeof(external_id_t) * num_nodes);
             read_from(file, graph->_internal_degrees.data(), sizeof(internal_id_t) * num_nodes);

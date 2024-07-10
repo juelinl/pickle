@@ -6,7 +6,7 @@
 #define PICKLE_NSW_HPP
 
 #include "queue.hpp"
-#include "nsw_graph.hpp"
+#include "graph.hpp"
 #include "distance.hpp"
 #include "util.hpp"
 
@@ -213,6 +213,52 @@ namespace pickle {
         return SelectNeighborsSimple(top_k, std::move(nearest_neighbors));
     }
 
+    template<class T, std::size_t Dim>
+    std::vector<Entry> SearchBaseSimple(DistanceFunction df, size_t top_k, size_t ef,
+                                            size_t dim, internal_id_t entry_id,
+                                            std::span<const T, Dim> q_data, std::span<const T> all_data,
+                                            const DynamicNSWGraphPtr &graph) {
+        assert(graph->IsBase());
+        MinQueue top_candidates;    // min first heap
+        MaxQueue nearest_neighbors; // max first heap
+
+        std::span<const T, Dim> entry_data = GetDataForInternalID<T, Dim>(entry_id, dim, all_data, graph);
+        auto entry_distance = Distance(q_data, entry_data, df);
+        top_candidates.emplace(entry_distance, entry_id);
+        nearest_neighbors.emplace(entry_distance, entry_id);
+
+        std::vector<bool> visited(graph->GetNodeCapacity());
+        visited.at(entry_id) = true;
+        while (!top_candidates.empty()) {
+            auto [c_dist, c_id] = top_candidates.top();
+            auto f_dist = nearest_neighbors.top()._distance;
+            top_candidates.pop();
+            if (c_dist > f_dist)
+                break;
+
+            auto adjlist = graph->GetNeighborsID(c_id);
+            for (size_t i = 0; i < adjlist.size(); i++) {
+                auto vid = adjlist[i];
+                if (visited.at(vid)) continue;
+                visited.at(vid) = true;
+
+//                auto next_vid = adjlist[i + 1];
+//                if (!visited.at(next_vid)) _mm_prefetch(GetDataForInternalID<T, Dim>(next_vid, dim, all_data, graph).data(), _MM_HINT_T2);
+                std::span<const T, Dim> v_data = GetDataForInternalID<T, Dim>(vid, dim, all_data, graph);
+                auto v_dist = Distance(q_data, v_data, df);
+                if (nearest_neighbors.size() < ef ||
+                    nearest_neighbors.top()._distance > v_dist) {
+                    nearest_neighbors.emplace(v_dist, vid);
+                    top_candidates.emplace(v_dist, vid);
+                    if (nearest_neighbors.size() > ef) {
+                        nearest_neighbors.pop();
+                    }
+                }
+            }
+        }
+        return SelectNeighborsSimple(top_k, std::move(nearest_neighbors));
+    }
+
     template<class T, std::size_t Dim = std::dynamic_extent>
     std::vector<Entry> SearchNSWLayersSimple(DistanceFunction df, size_t top_k, size_t ef,
                                        size_t dim, size_t entry_layer,
@@ -225,7 +271,7 @@ namespace pickle {
             external_entry_id = SlideNSWLayers(df, dim, entry_layer, stop_layer, q_data, all_data, graphs);
         }
         internal_id_t base_entry_id = graphs.at(0)->GetEntryInternalId(external_entry_id);
-        return SearchNSWLayerSimple(df, top_k, ef, dim, base_entry_id, q_data, all_data, graphs.at(0));
+        return SearchBaseSimple(df, top_k, ef, dim, base_entry_id, q_data, all_data, graphs.at(0));
     }
 
     template<class T, std::size_t Dim = std::dynamic_extent>
@@ -340,9 +386,10 @@ namespace pickle {
 
         std::vector<DynamicNSWGraphPtr> graphs;
         for (size_t i = 0; i <= max_layer; i++) {
+            bool is_base = i == 0;
             size_t M = i == 0 ? max_degree * 2 : max_degree;
             graphs.push_back(std::make_shared<DynamicNSWGraph>());
-            graphs.at(i)->Init(M, num_nodes[i]);
+            graphs.at(i)->Init(M, num_nodes[i], is_base);
         }
 
         std::atomic<int> max_level{0};

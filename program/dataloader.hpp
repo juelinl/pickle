@@ -14,34 +14,9 @@
 #include <algorithm>
 #include "util.hpp"
 #include "timer.hpp"
+#include "common.hpp"
 
 namespace pickle {
-    enum class DataType {
-        Uint8 = 0,
-        Int8 = 1,
-        Float16 = 3,
-        Float32 = 2,
-    };
-
-#define ATEN_DTYPE_SWITCH(val, DType, ...)                                     \
-  do {                                                                         \
-    if ((val) == DataType::Uint8) {                                            \
-      typedef uint8_t DType;                                                   \
-      { __VA_ARGS__ }                                                          \
-    } else if ((val) == DataType::Int8) {                                      \
-      typedef int8_t DType;                                                    \
-      { __VA_ARGS__ }                                                          \
-    } else if ((val) == DataType::Float32) {                                   \
-      typedef float DType;                                                     \
-      { __VA_ARGS__ }                                                          \
-    } else if ((val) == DataType::Float16) {                                   \
-      typedef float16_t DType;                                                 \
-      { __VA_ARGS__ }                                                          \
-    } else {                                                                   \
-      std::cerr << "DType can only be uint8_t, int8_t, float16_t, or float";   \
-      exit(-1);                                                                \
-    }                                                                          \
-  } while (0)
 
     struct Array2D {
         void *_data{nullptr};
@@ -69,6 +44,11 @@ namespace pickle {
 
         template <typename T> std::span<T> get_span(size_t row_id) {
             return std::span{get_ptr<T>(row_id), _shape[1]};
+        }
+
+        template <typename T, size_t Dim> std::span<T, Dim> get_span(size_t row_id) {
+            assert(Dim == _shape[1]);
+            return std::span<T, Dim>{get_ptr<T>(row_id), _shape[1]};
         }
 
         template <typename T> T *data() { return static_cast<T *>(_data); }
@@ -104,3 +84,4 @@ Array2DPtr LoadArray2D(const std::string &filename,
 GroundTruthPtr LoadGroundTruth(const std::string &filename);
 } // namespace pickle
 #endif // PICKLE_DATALOADER_HPP
+

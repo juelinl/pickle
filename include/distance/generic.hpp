@@ -13,8 +13,8 @@ namespace pickle::generic {
         return a < 0 ? 0 - a : a;
     };
 
-    template<class T, std::size_t Extend = std::dynamic_extent>
-    float L1(std::span<const T, Extend> va, std::span<const T, Extend> vb) {
+    template<class T, std::size_t Extent = std::dynamic_extent>
+    float L1(std::span<const T, Extent> va, std::span<const T, Extent> vb) {
         assert(va.size() == vb.size());
         using dist_type = static_switch<IsTFloat<T>(), int, float>::type;
         dist_type res{0};
@@ -25,8 +25,8 @@ namespace pickle::generic {
         return res;
     };
 
-    template<class T, std::size_t Extend = std::dynamic_extent>
-    float L2(std::span<const T, Extend> va, std::span<const T, Extend> vb) {
+    template<class T, std::size_t Extent = std::dynamic_extent>
+    float L2(std::span<const T, Extent> va, std::span<const T, Extent> vb) {
         assert(va.size() == vb.size());
         using dist_type = static_switch<IsTFloat<T>(), int, float>::type;
         dist_type res{0};
@@ -38,8 +38,8 @@ namespace pickle::generic {
         return res;
     };
 
-    template<class T, std::size_t Extend = std::dynamic_extent>
-    float IP(std::span<const T, Extend> va, std::span<const T, Extend> vb) {
+    template<class T, std::size_t Extent = std::dynamic_extent>
+    float IP(std::span<const T, Extent> va, std::span<const T, Extent> vb) {
         assert(va.size() == vb.size());
         using dist_type = static_switch<IsTFloat<T>(), int, float>::type;
         dist_type res{0};
@@ -50,8 +50,8 @@ namespace pickle::generic {
         return res;
     };
 
-    template<class T, DistanceFunction DF = DistanceFunction::RUNTIME, std::size_t Extend = std::dynamic_extent>
-    float Distance(std::span<const T, Extend> va, std::span<const T, Extend> vb, DistanceFunction df) {
+    template<class T, DistanceFunction DF = DistanceFunction::RUNTIME, std::size_t Extent = std::dynamic_extent>
+    float Distance(std::span<const T, Extent> va, std::span<const T, Extent> vb, DistanceFunction df) {
         if constexpr (DF == DistanceFunction::RUNTIME) {
             switch (df) {
                 case DistanceFunction::L1:
