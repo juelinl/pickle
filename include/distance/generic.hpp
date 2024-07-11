@@ -50,26 +50,26 @@ namespace pickle::generic {
         return res;
     };
 
-    template<class T, DistanceFunction DF = DistanceFunction::RUNTIME, std::size_t Extent = std::dynamic_extent>
-    float Distance(std::span<const T, Extent> va, std::span<const T, Extent> vb, DistanceFunction df) {
-        if constexpr (DF == DistanceFunction::RUNTIME) {
+    template<class T, DistFunc DF = DistFunc::RUNTIME, std::size_t Extent = std::dynamic_extent>
+    float Distance(std::span<const T, Extent> va, std::span<const T, Extent> vb, DistFunc df) {
+        if constexpr (DF == DistFunc::RUNTIME) {
             switch (df) {
-                case DistanceFunction::L1:
+                case DistFunc::L1:
                     return generic::L1(va, vb);
-                case DistanceFunction::L2:
+                case DistFunc::L2:
                     return generic::L2(va, vb);
-                case DistanceFunction::IP:
+                case DistFunc::IP:
                     return -generic::IP(va, vb);
                 default:
                     exit(-1);
             };
         } else {
             switch (DF) {
-                case DistanceFunction::L1:
+                case DistFunc::L1:
                     return generic::L1(va, vb);
-                case DistanceFunction::L2:
+                case DistFunc::L2:
                     return generic::L2(va, vb);
-                case DistanceFunction::IP:
+                case DistFunc::IP:
                     return -generic::IP(va, vb);
                 default:
                     exit(-1);

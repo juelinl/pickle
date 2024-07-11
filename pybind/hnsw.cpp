@@ -6,6 +6,8 @@
 #include "timer.hpp"
 #include "util.hpp"
 #include "serializer.hpp"
+#include "hnsw.hpp"
+
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
@@ -14,16 +16,16 @@
 namespace py = pybind11;
 
 namespace pickle {
-    struct HNSWGraph {
+    struct HNSWIndex {
         std::vector<DynamicNSWGraphPtr> _graphs;
         size_t _search_ef{100};
         size_t _build_ef{100};
         size_t _top_k{10};
         size_t _M{32};
-        DistanceFunction df{DistanceFunction::L2};
+        DistFunc df{DistFunc::L2};
         py::array _data;
 
-        HNSWGraph() = default;
+        HNSWIndex() = default;
 
         size_t getSearchEf() const { return _search_ef; };
 
@@ -112,15 +114,15 @@ namespace pickle {
 using namespace pickle;
 
 PYBIND11_MODULE(pyann, m) {
-    py::class_<HNSWGraph>(m, "HNSWGraph")
+    py::class_<HNSWIndex>(m, "HNSWIndex")
             .def(py::init<>())
-            .def_property("search_ef", &HNSWGraph::getSearchEf, &HNSWGraph::setSearchEf)
-            .def_property("build_ef", &HNSWGraph::getBuildEf, &HNSWGraph::setBuildEf)
-            .def_property("top_k", &HNSWGraph::getTopK, &HNSWGraph::setTopK)
-            .def_property("M", &HNSWGraph::getM, &HNSWGraph::setM)
-            .def_property_readonly("num_layer", &HNSWGraph::getTopK)
-            .def("save", &HNSWGraph::save, "Save the constructed index to the path")
-            .def("load", &HNSWGraph::load, "Load the constructed index from the path")
-            .def("build", &HNSWGraph::build, "Build hnsw graph on data with 2 dimension, supports int8, uint8, float16, and float32")
-            .def("search", &HNSWGraph::search, "Search the query using the hnsw graph, supports int8, uint8, float16, and float32");
+            .def_property("search_ef", &HNSWIndex::getSearchEf, &HNSWIndex::setSearchEf)
+            .def_property("build_ef", &HNSWIndex::getBuildEf, &HNSWIndex::setBuildEf)
+            .def_property("top_k", &HNSWIndex::getTopK, &HNSWIndex::setTopK)
+            .def_property("M", &HNSWIndex::getM, &HNSWIndex::setM)
+            .def_property_readonly("num_layer", &HNSWIndex::getTopK)
+            .def("save", &HNSWIndex::save, "Save the constructed index to the path")
+            .def("load", &HNSWIndex::load, "Load the constructed index from the path")
+            .def("build", &HNSWIndex::build, "Build hnsw graph on data with 2 dimension, supports int8, uint8, float16, and float32")
+            .def("search", &HNSWIndex::search, "Search the query using the hnsw graph, supports int8, uint8, float16, and float32");
 }

@@ -127,14 +127,14 @@ namespace pickle {
         };
 
         std::span<const internal_id_t> GetNeighborsID(internal_id_t vid) const {
-//            auto start = &_adjacent_lists.at(_max_degree * vid);
+//            auto start = &_adjacent_lists.at(max_degree * vid);
 //            auto end = start + _internal_degrees.at(vid);
 //            return {start, end};
             return {_adjacent_lists.data() + _max_degree * vid, (size_t) _internal_degrees.at(vid)};
         };
 
         std::span<const distance_t> GetNeighborsDistance(internal_id_t vid) const {
-//            auto start = &_distance_lists.at(_max_degree * vid);
+//            auto start = &_distance_lists.at(max_degree * vid);
 //            auto end = start + _internal_degrees.at(vid);
 //            return {start, end};
             return {_distance_lists.data() + _max_degree * vid, (size_t) _internal_degrees.at(vid)};

@@ -25,7 +25,7 @@ namespace pickle {
         Float32 = 2,
     };
 
-    enum class DistanceFunction {
+    enum class DistFunc {
         L1,
         L2,
         IP,

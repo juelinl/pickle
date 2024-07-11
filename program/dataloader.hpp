@@ -12,52 +12,9 @@
 #include <memory>
 #include <chrono>
 #include <algorithm>
-#include "util.hpp"
-#include "timer.hpp"
-#include "common.hpp"
+#include "array2d.hpp"
 
 namespace pickle {
-
-    struct Array2D {
-        void *_data{nullptr};
-        size_t _shape[2]{0, 0};
-        size_t _word_size{0};
-        DataType _data_type{DataType::Float32};
-
-        Array2D() = default;
-
-        ~Array2D() {
-            _shape[0] = 0;
-            _shape[1] = 0;
-            _word_size = 0;
-            if (_data)
-                free(_data);
-        }
-
-        void *get_raw(size_t row_id) {
-            return static_cast<char *>(_data) + 1ull * row_id * _shape[1] * _word_size;
-        };
-
-        template <typename T> T *get_ptr(size_t row_id) {
-            return static_cast<T *>(get_raw(row_id));
-        }
-
-        template <typename T> std::span<T> get_span(size_t row_id) {
-            return std::span{get_ptr<T>(row_id), _shape[1]};
-        }
-
-        template <typename T, size_t Dim> std::span<T, Dim> get_span(size_t row_id) {
-            assert(Dim == _shape[1]);
-            return std::span<T, Dim>{get_ptr<T>(row_id), _shape[1]};
-        }
-
-        template <typename T> T *data() { return static_cast<T *>(_data); }
-
-        template <typename T> std::span<T> span() {
-            return {data<T>(), _shape[0] * _shape[1]};
-        };
-    };
-    using Array2DPtr = std::shared_ptr<Array2D>;
 
 struct GroundTruth {
   std::vector<uint32_t> _label;

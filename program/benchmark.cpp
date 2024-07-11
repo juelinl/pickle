@@ -7,6 +7,7 @@
 #include "nsw.hpp"
 #include "timer.hpp"
 #include "serializer.hpp"
+#include "hnsw.hpp"
 
 #include <iostream>
 #include <filesystem>
@@ -15,7 +16,7 @@
 using namespace pickle;
 
 struct Config {
-    DistanceFunction df{DistanceFunction::L2};
+    DistFunc df{DistFunc::L2};
     size_t M{0};
     size_t ef_construction{0};
     size_t max_elements{0};
@@ -64,11 +65,11 @@ struct Config {
         program.parse_args(argc, argv);
         std::string space = program.get<std::string>("--space");
         if (space == "l2") {
-            df = pickle::DistanceFunction::L2;
+            df = pickle::DistFunc::L2;
         } else if (space == "ip") {
-            df = pickle::DistanceFunction::IP;
+            df = pickle::DistFunc::IP;
         } else if (space == "l1") {
-            df = pickle::DistanceFunction::L1;
+            df = pickle::DistFunc::L1;
         } else {
             std::cerr << "Unsupported space type: " << space << std::endl;
             exit(-1);

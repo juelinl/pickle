@@ -107,14 +107,14 @@ namespace pickle {
 
 #define ATEN_DISTANCE_SWITCH(val, DF, ...)                                     \
   do {                                                                         \
-    if (val == DistanceType::IP) {                                             \
-      constexpr DistanceType DF = DistanceType::IP;                            \
+    if (val == DistanceFunction::IP) {                                             \
+      constexpr DistanceFunction DF = DistanceFunction::IP;                            \
       { __VA_ARGS__ }                                                          \
-    } else if (val == DistanceType::L2) {                                      \
-      constexpr DistanceType DF = DistanceType::L2;                            \
+    } else if (val == DistanceFunction::L2) {                                      \
+      constexpr DistanceFunction DF = DistanceFunction::L2;                            \
       { __VA_ARGS__ }                                                          \
-    } else if (val == DistanceType::L1) {                                      \
-      constexpr DistanceType DF = DistanceType::L1;                            \
+    } else if (val == DistanceFunction::L1) {                                      \
+      constexpr DistanceFunction DF = DistanceFunction::L1;                            \
       { __VA_ARGS__ }                                                          \
     } else {                                                                   \
       std::cerr << "DF can only be Inner Product (IP), L2, or L1";             \
