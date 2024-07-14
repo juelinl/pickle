@@ -7,7 +7,7 @@
 #include "nsw.hpp"
 #include "timer.hpp"
 #include "serializer.hpp"
-#include "hnsw.hpp"
+#include "hnsw_old.hpp"
 
 #include <iostream>
 #include <filesystem>
@@ -95,7 +95,7 @@ inline int get_num_matched(int top_k, const GroundTruthPtr& truth, const std::ve
                 auto idx = i * truth->_shape[1] + j;
                 auto t_label = truth->_label[idx];
                 auto t_dist = truth->_distance[idx];
-                if (t_label == res._vid || t_dist >= res._distance) {
+                if (t_label == res.m_vid || t_dist >= res.m_dist) {
                     total_matched++;
                     break;
                 }
@@ -119,10 +119,10 @@ int main(int argc, char *argv[]) {
 
     std::vector<DynamicNSWGraphPtr> graphs;
 
-    if (config.index_path == "" || !std::filesystem::exists(config.index_path)) {
+    if (true || config.index_path == "" || !std::filesystem::exists(config.index_path)) {
         timer.start();
         std::vector<external_id_t> external_ids =
-                getRandomIndices<external_id_t>(config.max_elements);
+                GetRandIndices<external_id_t>(config.max_elements);
         timer.end();
         std::cout << "Get random indices in " << timer.seconds() << "secs" << std::endl;
 
@@ -145,6 +145,7 @@ int main(int argc, char *argv[]) {
             std::cout << "Save graph to disk in " << timer.seconds() << " secs" << std::endl;
         };
     }
+    return 0;
 
     if (graphs.empty())  {
         timer.start();
@@ -152,7 +153,6 @@ int main(int argc, char *argv[]) {
         timer.end();
         std::cout << "Load graph from disk in " << timer.seconds() << " secs" << std::endl;
     }
-
     if (config.query_path != "" && config.truth_path != "") {
         auto query = LoadArray2D(config.query_path);
         auto truth = LoadGroundTruth(config.truth_path);
@@ -187,7 +187,5 @@ int main(int argc, char *argv[]) {
                 std::cout << "top_k=" << top_k << " ef_search=" << ef_search << " recall=" << recall << " qps=" << qps << std::endl;
             }
         }
-
-
     }
 }

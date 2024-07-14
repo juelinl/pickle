@@ -41,10 +41,10 @@ namespace pickle
         std::uniform_real_distribution<double> distribution(0.0, 1.0);
         std::mt19937 rng;
         
-#pragma omp parallel private(rng)
+//#pragma omp parallel private(rng)
         rng.seed(std::random_device{}());
 
-#pragma parallel for schedule(static, 4096)
+//#pragma parallel for schedule(static, 4096)
         for (size_t i = 0; i < N; i++) {
             bool is_set{false};
             for (int level = 0; level < cumulative_probability.size(); level++) {
@@ -63,7 +63,7 @@ namespace pickle
         return res;
     }
 
-    template <class T> std::vector<T> getRandomIndices(size_t N) {
+    template <class T> std::vector<T> GetRandIndices(size_t N) {
         std::vector<T> indices(N);
         // Fill the vector with 0, 1, ..., N-1
         for (size_t i = 0; i < N; ++i) {

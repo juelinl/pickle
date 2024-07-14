@@ -19,214 +19,258 @@ namespace pickle {
     class DynamicNSWGraph {
     private:
         friend Serializer;
-
-        constexpr const static size_t _num_mutex{8192};
-
-        size_t _max_degree{0};
-        size_t _node_capacity{0};
-        bool _is_base{false};
-        internal_id_t _entry_internal_id{0};
-        internal_id_t _next_internal_id{0};
-        std::mutex _id_increment_mutex;
-
-        std::map<external_id_t, internal_id_t> _external_to_internal;
-        std::vector<internal_id_t > _external_to_internal_base;
-        std::vector<internal_id_t> _adjacent_lists;
-        std::vector<distance_t> _distance_lists;
-        std::vector<internal_id_t> _internal_degrees;
-        std::vector<external_id_t> _external_ids;
-
-        std::vector<std::mutex> _rw_mutex{_num_mutex}; // guard write to vector
+        bool m_is_base{false};
+        bool m_is_empty{true};
+        internal_id_t m_ent_id{0};
+        internal_id_t m_next_id{0};
+        size_t m_max_deg{0};
+        size_t m_max_node{0};
+        std::mutex m_id_mutex{};
+        std::map<external_id_t, internal_id_t> m_ext2in; // mapping external id to internal id (only use if is_base)
+        std::vector<internal_id_t > m_ext2in_base; // mapping external id to internal id (only use if !is_base)
+        std::vector<internal_id_t> m_adj_list; // adjacency list
+        std::vector<distance_t> m_dist_list; // distance between node to its neighbors
+        std::vector<internal_id_t> m_deg_list; // degree of adjacency list
+        std::vector<external_id_t> m_ext_list; // external ids received
+        std::vector<std::mutex> m_update_mutex; // guard write to vector
 
         std::mutex &GetMutex(internal_id_t vid) {
-            return _rw_mutex.at(vid % _num_mutex);
+            return m_update_mutex.at(vid % m_update_mutex.size());
         };
 
         void Clear() {
-            _max_degree = 0;
-            _node_capacity = 0;
-            _external_ids.clear();
-            _internal_degrees.clear();
-            _adjacent_lists.clear();
-            _distance_lists.clear();
+            m_is_empty = true;
+            m_max_deg = 0;
+            m_max_node = 0;
+            m_ext_list.clear();
+            m_deg_list.clear();
+            m_adj_list.clear();
+            m_dist_list.clear();
+            m_ext2in.clear();
         };
 
     public:
         DynamicNSWGraph() = default;
+        [[nodiscard]] bool empty() const {
+            return m_is_empty;
+        }
+        [[nodiscard]] internal_id_t GetSize() const {
+            return m_next_id;
+        }
+
+        [[nodiscard]] size_t GetCapacity() const {
+            return m_max_node;
+        }
+
+
+        [[nodiscard]] external_id_t GetExtID(internal_id_t vid) const {
+            assert(!m_is_empty);
+            assert(vid < m_max_node);
+            return m_ext_list.at(vid);
+        };
+
+
+        [[nodiscard]] internal_id_t NewInID(external_id_t ext_id) {
+            const std::lock_guard<std::mutex> guard{m_id_mutex};
+            internal_id_t new_in_id = m_next_id++;
+            assert(new_in_id < m_max_node);
+
+            m_ext_list.at(new_in_id) = ext_id;
+            if (m_is_base) {
+                assert(m_ext2in_base.at(ext_id) == empty_internal_id);
+                m_ext2in_base.at(ext_id) = new_in_id;
+            } else {
+                assert(!m_ext2in.contains(ext_id));
+                m_ext2in.insert({ext_id, new_in_id});
+            }
+            m_is_empty = false;
+            return new_in_id;
+        };
+
+        [[nodiscard]] internal_id_t GetInID(external_id_t external_id) const {
+            assert(!m_is_empty);
+            if (m_is_base) {
+                auto id = m_ext2in_base.at(external_id);
+                assert(id != empty_internal_id);
+                return id;
+            } else {
+                assert(m_ext2in.contains(external_id));
+                auto id = m_ext2in.at(external_id);
+                return id;
+            }
+        };
+
+        [[nodiscard]] internal_id_t GetEntInID(external_id_t external_entry_id = empty_external_id) const {
+            //TODO: better strategy for updating entry id
+            if (external_entry_id == empty_external_id) return m_ent_id;
+            return GetInID(external_entry_id);
+        };
+
+        [[nodiscard]] std::span<internal_id_t> GetAdj(internal_id_t vid) {
+            assert(vid < m_max_node);
+            return {m_adj_list.data() + m_max_deg * vid, (size_t) m_deg_list.at(vid)};
+        };
+
+        [[nodiscard]] std::span<const internal_id_t> GetAdj(internal_id_t vid) const {
+            assert(vid < m_max_node);
+            return {m_adj_list.data() + m_max_deg * vid, (size_t) m_deg_list.at(vid)};
+        };
+
+        [[nodiscard]] std::span<distance_t> GetDist(internal_id_t vid) {
+            assert(vid < m_max_node);
+            return {m_dist_list.data() + m_max_deg * vid, (size_t) m_deg_list.at(vid)};
+        };
+
+        [[nodiscard]] std::span<const distance_t> GetDist(internal_id_t vid) const {
+            return {m_dist_list.data() + m_max_deg * vid, (size_t) m_deg_list.at(vid)};
+        };
+
+        [[nodiscard]] bool IsBase() const {return m_is_base;};
 
         void Init(size_t max_node_degree, size_t node_capacity, bool is_base = false) {
             Clear();
-            _is_base = is_base;
-            _max_degree = max_node_degree;
-            _node_capacity = node_capacity;
-            _adjacent_lists.resize(_node_capacity * _max_degree, empty_internal_id);
-            _distance_lists.resize(_node_capacity * _max_degree, std::numeric_limits<distance_t>::max());
-            _external_ids.resize(_node_capacity, empty_external_id);
-            _internal_degrees.resize(_node_capacity, 0);
-            if (_is_base) {
-                _external_to_internal_base.resize(_node_capacity, empty_internal_id);
+            m_is_base = is_base;
+            m_max_deg = max_node_degree;
+            m_max_node = node_capacity;
+            m_adj_list.resize(m_max_node * m_max_deg, empty_internal_id);
+            m_dist_list.resize(m_max_node * m_max_deg, std::numeric_limits<distance_t>::max());
+            m_ext_list.resize(m_max_node, empty_external_id);
+            m_deg_list.resize(m_max_node, 0);
+            if (m_is_base) {
+                m_ext2in_base.resize(m_max_node, empty_internal_id);
+                m_update_mutex = std::vector<std::mutex>(8192);
             } else {
-                _rw_mutex = std::vector<std::mutex>(_node_capacity);
+                m_update_mutex = std::vector<std::mutex>(m_max_node);
             }
         };
 
         void CreateMap() {
-            if (_is_base) {
-                _external_to_internal_base.clear();
-                _external_to_internal_base.resize(_node_capacity, empty_internal_id);
-                for (internal_id_t i = 0; i < _next_internal_id; i++) {
-                    _external_to_internal_base.at(_external_ids[i]) = i;
+            if (m_is_base) {
+                m_ext2in_base.clear();
+                m_ext2in_base.resize(m_max_node, empty_internal_id);
+                for (internal_id_t i = 0; i < m_next_id; i++) {
+                    m_ext2in_base.at(m_ext_list[i]) = i;
                 }
             } else {
-                _external_to_internal.clear();
-                for (internal_id_t i = 0; i < _next_internal_id; i++) {
-                    _external_to_internal.emplace(_external_ids[i],i);
+                m_ext2in.clear();
+                for (internal_id_t i = 0; i < m_next_id; i++) {
+                    m_ext2in.emplace(m_ext_list[i], i);
                 }
             }
         };
 
-        external_id_t GetExternalId(internal_id_t vid) const {
-            return _external_ids.at(vid);
-        };
-
-
-        internal_id_t GetNewInternalId(external_id_t external_id) {
-            internal_id_t new_internal_id{empty_internal_id};
-            {
-                std::unique_lock<std::mutex> guard{_id_increment_mutex};
-                new_internal_id = _next_internal_id++;
+        bool IsValid(internal_id_t vid) const {
+            auto adj = GetAdj(vid);
+            auto dist = GetDist(vid);
+            assert(adj.size() == dist.size());
+            for (int i = 1; i < adj.size(); i++) {
+                assert(adj[i] != adj[i - 1]);
+                assert(dist[i] >= dist[i - 1]);
             }
+            if (dist.size() > 0) assert(dist[0] > 0);
+            return true;
+        };
 
-            _external_ids.at(new_internal_id) = external_id;
-            if (_is_base) {
-                assert(_external_to_internal_base.at(external_id) == empty_internal_id);
-                _external_to_internal_base.at(external_id) = new_internal_id;
-            } else {
-                assert(!_external_to_internal.contains(external_id));
-                _external_to_internal.insert({external_id, new_internal_id});
+        void Add(internal_id_t vid, std::span<const Entry> neighbors) {
+            std::lock_guard<std::mutex> writeLock{GetMutex(vid)};
+            assert(vid < m_max_node);
+            auto adj = GetAdj(vid);
+            auto dist = GetDist(vid);
+            for (size_t i = 0; i < neighbors.size(); i++) {
+                assert(vid != neighbors[i].m_vid);
+                assert(neighbors[i].m_vid < m_max_node);
+                assert(i+1 == neighbors.size() || neighbors[i].m_vid != neighbors[i+1].m_vid);
+                adj[i] = neighbors[i].m_vid;
+                dist[i] = neighbors[i].m_dist;
             }
-            return new_internal_id;
-        };
+            m_deg_list.at(vid) = (int ) neighbors.size();
+            assert(IsValid(vid));
+        }
 
-        internal_id_t GetInternalId(external_id_t external_id) const {
-            if (_is_base) {
-                auto id = _external_to_internal_base.at(external_id);
-                assert(id != empty_internal_id);
-                return id;
-            } else {
-                assert(_external_to_internal.contains(external_id));
-                auto id = _external_to_internal.at(external_id);
-                return id;
-            }
-        };
-
-        internal_id_t GetEntryInternalId(external_id_t external_entry_id = empty_external_id) const {
-            //TODO: better strategy for updating entry id
-            if (external_entry_id == empty_external_id) return _entry_internal_id;
-            return GetInternalId(external_entry_id);
-        };
-
-        std::span<const internal_id_t> GetNeighborsID(internal_id_t vid) const {
-//            auto start = &_adjacent_lists.at(max_degree * vid);
-//            auto end = start + _internal_degrees.at(vid);
-//            return {start, end};
-            return {_adjacent_lists.data() + _max_degree * vid, (size_t) _internal_degrees.at(vid)};
-        };
-
-        std::span<const distance_t> GetNeighborsDistance(internal_id_t vid) const {
-//            auto start = &_distance_lists.at(max_degree * vid);
-//            auto end = start + _internal_degrees.at(vid);
-//            return {start, end};
-            return {_distance_lists.data() + _max_degree * vid, (size_t) _internal_degrees.at(vid)};
-        };
-
-        bool IsBase() const {return _is_base;};
-
-        // it should be called only once for each vertex
-        void AddNode(internal_id_t vid, std::span<Entry> neighbors) {
-            std::unique_lock<std::mutex> writeLock{GetMutex(vid)};
-            assert(vid < _node_capacity);
-            size_t idx{0};
-            for (const auto edge: neighbors) {
-                assert(edge._vid < _node_capacity);
-                if (edge._vid != vid) {
-                    _adjacent_lists.at(_max_degree * vid + idx) = edge._vid;
-                    _distance_lists.at(_max_degree * vid + idx) = edge._distance;
-                    idx++;
-                }
-            }
-            _internal_degrees.at(vid) = idx;
-        };
-
-        // it can be called multiple times for each vertex (critical path?)
+//         it can be called multiple times for each vertex (critical path?)
         void AddReverseEdge(internal_id_t nid, const Entry &edge) {
-            // TODO: one mutex per node?
-            auto vid = edge._vid;
-            assert(vid < _node_capacity);
-            assert(nid < _node_capacity);
-            if (nid == edge._vid) return;
-            // use mutex to prevent race condition on update
-            std::unique_lock<std::mutex> writeLock{GetMutex(vid)};
-            auto v_deg = _internal_degrees.at(vid);
-            assert(v_deg <= _max_degree);
-
-            if (v_deg == 0) {
-                _distance_lists.at(vid * _max_degree) = edge._distance;
-                _adjacent_lists.at(vid * _max_degree) = nid;
-                _internal_degrees.at(vid) = 1;
-                return;
-            }
+            if (nid == edge.m_vid) return;
+            const auto vid = edge.m_vid;
+            std::lock_guard<std::mutex> writeLock{GetMutex(edge.m_vid)};
+            auto v_deg = m_deg_list.at(vid);
+            assert(vid < m_max_node);
+            assert(nid < m_max_node);
+            assert(v_deg <= m_max_deg);
 
             // Greedy approach for updating edges
             // The greedy approach always keeps top max_degree closest edges
             // keep adjacency list and distance sorted, small distance edges will be stored in the front
-            auto dist_start = &_distance_lists.at(vid * _max_degree);
-            auto edge_start = &_adjacent_lists.at(vid * _max_degree);
-            auto offset = std::lower_bound(dist_start, dist_start + v_deg, edge._distance) - dist_start;
-            assert(offset <= v_deg);
-            if (offset == _max_degree) {
+            auto dist_ptr = m_dist_list.data() + vid * m_max_deg;
+            auto adj_ptr = m_adj_list.data() + vid * m_max_deg;
+            auto offset = std::lower_bound(dist_ptr, dist_ptr + v_deg, edge.m_dist) - dist_ptr;
+            assert(offset <= m_max_deg);
+            if (offset == m_max_deg) {
                 return;
             } else if (offset == v_deg) {
                 // add to the end if within capacity
-                *(edge_start + offset) = nid;
-                *(dist_start + offset) = edge._distance;
-                _internal_degrees.at(vid) += v_deg < _max_degree;
+                assert(offset < m_max_deg);
+                adj_ptr[offset] = nid;
+                dist_ptr[offset] = edge.m_dist;
+                m_deg_list.at(vid) += v_deg < m_max_deg;
             } else {
-                for (int i = v_deg; i > offset; i--) {
-                    dist_start[i] = dist_start[i - 1];
-                    edge_start[i] = edge_start[i - 1];
+                assert(offset < m_max_deg);
+                int end = std::min(v_deg, (int) m_max_deg - 1);
+                for (int i = end; i > offset; i--) {
+                    dist_ptr[i] = dist_ptr[i - 1];
+                    adj_ptr[i] = adj_ptr[i - 1];
                 }
-                edge_start[offset] = nid;
-                dist_start[offset] = edge._distance;
-                _internal_degrees.at(vid) += v_deg < _max_degree;
+                adj_ptr[offset] = nid;
+                dist_ptr[offset] = edge.m_dist;
+                m_deg_list.at(vid) += v_deg < m_max_deg;
             }
         };
 
-        internal_id_t GetNumNodes() const {
-            return _next_internal_id;
-        }
+        void AddEdge(internal_id_t vid, internal_id_t nid, distance_t distance) {
+            std::lock_guard<std::mutex> writeLock{GetMutex(vid)};
+            auto v_deg = m_deg_list.at(vid);
+            assert(vid != nid);
+            assert(vid < m_max_node);
+            assert(nid < m_max_node);
+            assert(v_deg <= m_max_deg);
+            assert(IsValid(vid));
 
-        internal_id_t GetNodeCapacity() const {
-            return _node_capacity;
-        }
+            // Greedy approach for updating edges
+            // The greedy approach always keeps top max_degree closest edges
+            // keep adjacency list and distance sorted, small distance edges will be stored in the front
+            auto dist_ptr = &m_dist_list.at(vid * m_max_deg);
+            auto adj_ptr = &m_adj_list.at(vid * m_max_deg);
+            auto offset = std::lower_bound(dist_ptr, dist_ptr + v_deg, distance) - dist_ptr;
+            if (offset < m_max_deg) {
+                int end = std::min(v_deg, (int) m_max_deg - 1);
+                for (int i = end; i > offset; i--) {
+                    dist_ptr[i] = dist_ptr[i - 1];
+                    adj_ptr[i] = adj_ptr[i - 1];
+                }
+                adj_ptr[offset] = nid;
+                dist_ptr[offset] = distance;
+                m_deg_list.at(vid) += v_deg < m_max_deg;
+            }
+
+//            if (offset >= m_max_deg) {
+//                return;
+//            } else if (offset == v_deg) {
+//                // add to the end if within capacity
+//                *(adj_ptr + offset) = nid;
+//                *(dist_ptr + offset) = distance;
+//                m_deg_list.at(vid) += v_deg < m_max_deg;
+//            } else {
+//                int end = std::min(v_deg, (int) m_max_deg - 1);
+//                for (int i = end; i > offset; i--) {
+//                    dist_ptr[i] = dist_ptr[i - 1];
+//                    adj_ptr[i] = adj_ptr[i - 1];
+//                }
+//                adj_ptr[offset] = nid;
+//                dist_ptr[offset] = distance;
+//                m_deg_list.at(vid) += v_deg < m_max_deg;
+//            }
+            assert(IsValid(vid));
+        };
     };
 
     using DynamicNSWGraphPtr = std::shared_ptr<DynamicNSWGraph>;
-
-    template<class T, std::size_t Dim>
-    inline std::span<const T, Dim> GetDataForExternalID(external_id_t q_id, size_t dim, std::span<const T> all_data) {
-        auto start = all_data.data() + q_id * dim;
-        std::span<const T, Dim> data{start, dim};
-        return data;
-    };
-
-    template<class T, std::size_t Dim>
-    inline std::span<const T, Dim> GetDataForInternalID(internal_id_t vid, size_t dim, std::span<const T> all_data,
-                                                  const DynamicNSWGraphPtr &graph) {
-        auto start = all_data.data() + graph->GetExternalId(vid) * dim;
-        std::span<const T, Dim> data{start, dim};
-        return data;
-    };
-
-
 }

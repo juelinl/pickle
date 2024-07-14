@@ -54,12 +54,12 @@ namespace pickle
         }
 
         template <typename T, size_t Dim> std::span<T, Dim> get_span(size_t row_id) {
-            assert(Dim == _shape[1]);
+            assert(Dim == _shape[1] || Dim == std::dynamic_extent);
             return std::span<T, Dim>{get_ptr<T>(row_id), _shape[1]};
         }
 
         template <typename T, size_t Dim> std::span<const T, Dim> get_span(size_t row_id) const {
-            assert(Dim == _shape[1]);
+            assert(Dim == _shape[1] || Dim == std::dynamic_extent);
             return std::span<const T, Dim>{get_ptr<T>(row_id), _shape[1]};
         }
 

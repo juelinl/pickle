@@ -9,6 +9,7 @@
 #include "graph.hpp"
 #include "distance.hpp"
 #include "util.hpp"
+#include "visited.hpp"
 
 #include <iostream>
 #include <set>
@@ -16,8 +17,23 @@
 #include <cassert>
 #include <omp.h>
 #include <stack>
-
 namespace pickle {
+
+    template<class T, std::size_t Dim>
+    inline std::span<const T, Dim> GetDataForExternalID(external_id_t q_id, size_t dim, std::span<const T> all_data) {
+        auto start = all_data.data() + q_id * dim;
+        std::span<const T, Dim> data{start, dim};
+        return data;
+    };
+
+
+    template<class T, std::size_t Dim>
+    inline std::span<const T, Dim> GetDataForInternalID(internal_id_t vid, size_t dim, std::span<const T> all_data,
+                                                        const DynamicNSWGraphPtr &graph) {
+        auto start = all_data.data() + graph->GetExtID(vid) * dim;
+        std::span<const T, Dim> data{start, dim};
+        return data;
+    };
 
     inline std::vector<Entry> SelectNeighborsSimple(size_t top_k, MaxQueue queue) {
         while (queue.size() > top_k) queue.pop();
@@ -49,12 +65,12 @@ namespace pickle {
 
         while (!W.empty() and R.size() < top_k) {
             auto v1 = W.top(); // v1 is the closest candidate to the query in the queue
-            auto v1_q_dist = v1._distance;
-            auto v1_id = v1._vid;
+            auto v1_q_dist = v1.m_dist;
+            auto v1_id = v1.m_vid;
             std::span<const T, Dim> v1_data = GetDataForInternalID<T, Dim>(v1_id, dim, all_data, graph);
             bool insert_v1{true};
             for (auto& v2: R) {
-                auto v2_id = v2._vid; // v2 is the nearest neighbors to return
+                auto v2_id = v2.m_vid; // v2 is the nearest neighbors to return
                 std::span<const T, Dim> v2_data = GetDataForInternalID<T, Dim>(v2_id, dim, all_data, graph);
                 auto v1_v2_dist = Distance(v1_data, v2_data, df);
                 // v1 is only inserted if it is closer to the query than any v2
@@ -95,7 +111,7 @@ namespace pickle {
         bool updated = true;
         while (updated) {
             updated = false;
-            auto adjlist = graph->GetNeighborsID(c_id);
+            auto adjlist = graph->GetAdj(c_id);
             for (internal_id_t vid: adjlist) {
                 std::span<const T, Dim> v_data = GetDataForInternalID<T, Dim>(vid, dim, all_data, graph);
                 auto v_dist = Distance(q_data, v_data, df);
@@ -106,7 +122,7 @@ namespace pickle {
                 }
             }
         }
-        return graph->GetExternalId(c_id);
+        return graph->GetExtID(c_id);
     }
 
     template<class T, std::size_t Dim>
@@ -125,7 +141,7 @@ namespace pickle {
         external_id_t external_entry_id{empty_external_id};
         for (int cur_layer = (int) entry_layer; cur_layer >= stop_layer; cur_layer--) {
             const auto &cur_graph = graphs.at(cur_layer);
-            internal_id_t entry_id = cur_graph->GetEntryInternalId(external_entry_id);
+            internal_id_t entry_id = cur_graph->GetEntInID(external_entry_id);
             external_entry_id = SlideNSWLayer(df, dim, entry_id, q_data, all_data, cur_graph);
         }
         return external_entry_id;
@@ -144,23 +160,29 @@ namespace pickle {
         top_candidates.emplace(entry_distance, entry_id);
         nearest_neighbors.emplace(entry_distance, entry_id);
 
-        std::vector<bool> visited(graph->GetNodeCapacity());
+        std::vector<bool> visited(graph->GetCapacity());
         visited.at(entry_id) = true;
+//        auto visited = VisitedTable::Global(graph->GetCapacity());
+//        visited.Mark(entry_id);
+
         while (!top_candidates.empty()) {
             auto [c_dist, c_id] = top_candidates.top();
-            auto f_dist = nearest_neighbors.top()._distance;
+            auto f_dist = nearest_neighbors.top().m_dist;
             top_candidates.pop();
             if (c_dist > f_dist)
                 break;
 
-            auto adjlist = graph->GetNeighborsID(c_id);
+            auto adjlist = graph->GetAdj(c_id);
             for (internal_id_t vid: adjlist) {
                 if (visited.at(vid)) continue;
                 visited.at(vid) = true;
+//                if (visited.IsVisited(vid)) continue;
+//                visited.Mark(vid);
+
                 std::span<const T, Dim> v_data = GetDataForInternalID<T, Dim>(vid, dim, all_data, graph);
                 auto v_dist = Distance(q_data, v_data, df);
                 if (nearest_neighbors.size() < ef ||
-                    nearest_neighbors.top()._distance > v_dist) {
+                    nearest_neighbors.top().m_dist > v_dist) {
                     nearest_neighbors.emplace(v_dist, vid);
                     top_candidates.emplace(v_dist, vid);
                     if (nearest_neighbors.size() > ef) {
@@ -169,6 +191,7 @@ namespace pickle {
                 }
             }
         }
+//        visited.Advance();
         return SelectNeighborsHeuristic<T, Dim>(df, dim, top_k, std::move(nearest_neighbors), all_data, graph);
     }
 
@@ -185,23 +208,23 @@ namespace pickle {
         top_candidates.emplace(entry_distance, entry_id);
         nearest_neighbors.emplace(entry_distance, entry_id);
 
-        std::vector<bool> visited(graph->GetNodeCapacity());
+        std::vector<bool> visited(graph->GetCapacity());
         visited.at(entry_id) = true;
         while (!top_candidates.empty()) {
             auto [c_dist, c_id] = top_candidates.top();
-            auto f_dist = nearest_neighbors.top()._distance;
+            auto f_dist = nearest_neighbors.top().m_dist;
             top_candidates.pop();
             if (c_dist > f_dist)
                 break;
 
-            auto adjlist = graph->GetNeighborsID(c_id);
+            auto adjlist = graph->GetAdj(c_id);
             for (internal_id_t vid: adjlist) {
                 if (visited.at(vid)) continue;
                 visited.at(vid) = true;
                 std::span<const T, Dim> v_data = GetDataForInternalID<T, Dim>(vid, dim, all_data, graph);
                 auto v_dist = Distance(q_data, v_data, df);
                 if (nearest_neighbors.size() < ef ||
-                    nearest_neighbors.top()._distance > v_dist) {
+                    nearest_neighbors.top().m_dist > v_dist) {
                     nearest_neighbors.emplace(v_dist, vid);
                     top_candidates.emplace(v_dist, vid);
                     if (nearest_neighbors.size() > ef) {
@@ -227,16 +250,16 @@ namespace pickle {
         top_candidates.emplace(entry_distance, entry_id);
         nearest_neighbors.emplace(entry_distance, entry_id);
 
-        std::vector<bool> visited(graph->GetNodeCapacity());
+        std::vector<bool> visited(graph->GetCapacity());
         visited.at(entry_id) = true;
         while (!top_candidates.empty()) {
             auto [c_dist, c_id] = top_candidates.top();
-            auto f_dist = nearest_neighbors.top()._distance;
+            auto f_dist = nearest_neighbors.top().m_dist;
             top_candidates.pop();
             if (c_dist > f_dist)
                 break;
 
-            auto adjlist = graph->GetNeighborsID(c_id);
+            auto adjlist = graph->GetAdj(c_id);
             for (size_t i = 0; i < adjlist.size(); i++) {
                 auto vid = adjlist[i];
                 if (visited.at(vid)) continue;
@@ -247,7 +270,7 @@ namespace pickle {
                 std::span<const T, Dim> v_data = GetDataForInternalID<T, Dim>(vid, dim, all_data, graph);
                 auto v_dist = Distance(q_data, v_data, df);
                 if (nearest_neighbors.size() < ef ||
-                    nearest_neighbors.top()._distance > v_dist) {
+                    nearest_neighbors.top().m_dist > v_dist) {
                     nearest_neighbors.emplace(v_dist, vid);
                     top_candidates.emplace(v_dist, vid);
                     if (nearest_neighbors.size() > ef) {
@@ -270,7 +293,7 @@ namespace pickle {
             size_t stop_layer{1};
             external_entry_id = SlideNSWLayers(df, dim, entry_layer, stop_layer, q_data, all_data, graphs);
         }
-        internal_id_t base_entry_id = graphs.at(0)->GetEntryInternalId(external_entry_id);
+        internal_id_t base_entry_id = graphs.at(0)->GetEntInID(external_entry_id);
         return SearchBaseSimple(df, top_k, ef, dim, base_entry_id, q_data, all_data, graphs.at(0));
     }
 
@@ -286,19 +309,20 @@ namespace pickle {
         assert(q_data.size() == dim);
 
         auto top_k = max_degree;
-        auto vid = graph->GetNewInternalId(q_id);
+        auto vid = graph->NewInID(q_id);
         if (vid == 0) return empty_external_id; // handle edge case
 
         auto neighbors = SearchNSWLayerHeuristic(df, top_k, ef, dim, entry_id, q_data, all_data, graph);
-        graph->AddNode(vid, neighbors);
+//        graph->AddNode(vid, neighbors);
+        graph->Add(vid, neighbors);
 
         for (const auto &edge: neighbors) {
             graph->AddReverseEdge(vid, edge);
         }
 
         if (neighbors.size() >= 1) {
-            assert(neighbors[0]._vid != vid);
-            return graph->GetExternalId(neighbors[0]._vid);
+            assert(neighbors[0].m_vid != vid);
+            return graph->GetExtID(neighbors[0].m_vid);
         } else {
             return empty_external_id;
         }
@@ -322,7 +346,7 @@ namespace pickle {
         // must do this step first to avoid read before write condition
         // each entry by default has 0 edges so reading them is fine
         for (int i = 0; i <= insert_level; i++) {
-            internal_id_t internal_id = graphs.at(i)->GetNewInternalId(q_id);
+            internal_id_t internal_id = graphs.at(i)->NewInID(q_id);
             id_vec.at(i) = internal_id;
             assert(internal_id >= 0);
         }
@@ -330,19 +354,19 @@ namespace pickle {
         // insert into hnsw graph
         for (int lc = (int) insert_level; lc >= 0; lc--) {
             auto graph = graphs.at(lc);
-            auto entry_id = graph->GetEntryInternalId(external_entry_id);
+            auto entry_id = graph->GetEntInID(external_entry_id);
             auto vid = id_vec.at(lc);
             auto top_k = lc == 0 ? max_degree * 2 : max_degree;
             auto neighbors = SearchNSWLayerHeuristic(df, top_k, ef, dim, entry_id, q_data, all_data, graph);
             if (vid == 0) {
                 // handle edge case
-                // keep vid 0's adj list uninitialized
+                // keep vid 0's adj list uninitialized when first encounter it
                 external_entry_id = empty_external_id;
             } else {
                 assert(!neighbors.empty());
-                internal_id_t internal_entry_id = neighbors.at(0)._vid;
-                external_entry_id = graph->GetExternalId(internal_entry_id);
-                graph->AddNode(vid, neighbors);
+                internal_id_t internal_entry_id = neighbors.at(0).m_vid;
+                external_entry_id = graph->GetExtID(internal_entry_id);
+                graph->Add(vid, neighbors);
                 for (const auto &edge: neighbors) {
                     graph->AddReverseEdge(vid, edge);
                 }
@@ -361,7 +385,7 @@ namespace pickle {
 #pragma omp parallel for schedule(static, 128)
         for (external_id_t q_id: external_ids) {
             std::span<const T, Dim> q_data = GetDataForExternalID<T, Dim>(q_id, dim, all_data);
-            internal_id_t entry_id = graph->GetEntryInternalId();
+            internal_id_t entry_id = graph->GetEntInID();
             InsertNSWLayer(df, ef, max_degree, dim, entry_id, q_id, q_data, all_data, graph);
         }
         return graph;
@@ -387,12 +411,13 @@ namespace pickle {
         std::vector<DynamicNSWGraphPtr> graphs;
         for (size_t i = 0; i <= max_layer; i++) {
             bool is_base = i == 0;
-            size_t M = i == 0 ? max_degree * 2 : max_degree;
+            size_t M = is_base ? max_degree * 2 : max_degree;
             graphs.push_back(std::make_shared<DynamicNSWGraph>());
             graphs.at(i)->Init(M, num_nodes[i], is_base);
         }
 
         std::atomic<int> max_level{0};
+
 #pragma omp parallel for schedule(static, 128)
         for (size_t i = 0; i < external_ids.size(); i++) {
             external_id_t q_id = external_ids.at(i);

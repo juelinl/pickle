@@ -30,14 +30,14 @@ namespace pickle
         size_t num_graphs = graphs.size();
         write_to(file, &num_graphs, sizeof(num_graphs));
         for (const auto & graph : graphs) {
-            size_t num_nodes = graph->_node_capacity;
-            size_t max_degree = graph->_max_degree;
+            size_t num_nodes = graph->m_max_node;
+            size_t max_degree = graph->m_max_deg;
             size_t num_edges = num_nodes * max_degree;
-            ALWAYS_ASSERT(graph->_next_internal_id == num_nodes);
-            ALWAYS_ASSERT(graph->_external_ids.size() == num_nodes);
-            ALWAYS_ASSERT(graph->_internal_degrees.size() == num_nodes);
-            ALWAYS_ASSERT(graph->_distance_lists.size() == num_edges);
-            ALWAYS_ASSERT(graph->_adjacent_lists.size() == num_edges);
+            ALWAYS_ASSERT(graph->m_next_id == num_nodes);
+            ALWAYS_ASSERT(graph->m_ext_list.size() == num_nodes);
+            ALWAYS_ASSERT(graph->m_deg_list.size() == num_nodes);
+            ALWAYS_ASSERT(graph->m_dist_list.size() == num_edges);
+            ALWAYS_ASSERT(graph->m_adj_list.size() == num_edges);
             size_t graph_size = sizeof(graph_size) + sizeof(num_nodes) + sizeof(max_degree);
             graph_size += sizeof(external_id_t) * num_nodes;
             graph_size += sizeof(internal_id_t) * num_nodes;
@@ -46,10 +46,10 @@ namespace pickle
             write_to(file, &graph_size, sizeof(graph_size));
             write_to(file, &num_nodes, sizeof(num_nodes));
             write_to(file, &max_degree, sizeof(max_degree));
-            write_to(file, graph->_external_ids.data(), sizeof(external_id_t) * num_nodes);
-            write_to(file, graph->_internal_degrees.data(), sizeof(internal_id_t) * num_nodes);
-            write_to(file, graph->_adjacent_lists.data(), sizeof(internal_id_t) * num_edges);
-            write_to(file, graph->_distance_lists.data(), sizeof(internal_id_t) * num_edges);
+            write_to(file, graph->m_ext_list.data(), sizeof(external_id_t) * num_nodes);
+            write_to(file, graph->m_deg_list.data(), sizeof(internal_id_t) * num_nodes);
+            write_to(file, graph->m_adj_list.data(), sizeof(internal_id_t) * num_edges);
+            write_to(file, graph->m_dist_list.data(), sizeof(internal_id_t) * num_edges);
         }
         file.close();
     };
@@ -69,11 +69,11 @@ namespace pickle
             read_from(file, &max_degree, sizeof(max_degree));
             size_t num_edges = num_nodes * max_degree;
             graph->Init(max_degree, num_nodes, i == 0);
-            graph->_next_internal_id = num_nodes;
-            read_from(file, graph->_external_ids.data(), sizeof(external_id_t) * num_nodes);
-            read_from(file, graph->_internal_degrees.data(), sizeof(internal_id_t) * num_nodes);
-            read_from(file, graph->_adjacent_lists.data(), sizeof(internal_id_t) * num_edges);
-            read_from(file, graph->_distance_lists.data(), sizeof(internal_id_t) * num_edges);
+            graph->m_next_id = num_nodes;
+            read_from(file, graph->m_ext_list.data(), sizeof(external_id_t) * num_nodes);
+            read_from(file, graph->m_deg_list.data(), sizeof(internal_id_t) * num_nodes);
+            read_from(file, graph->m_adj_list.data(), sizeof(internal_id_t) * num_edges);
+            read_from(file, graph->m_dist_list.data(), sizeof(internal_id_t) * num_edges);
             graph->CreateMap();
             graphs.push_back(graph);
         }
