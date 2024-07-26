@@ -14,6 +14,84 @@
 
 namespace pickle
 {
+    // Adopted from NGT: https://github.com/yahoojapan/NGT/blob/main/lib/NGT/HashBasedBooleanSet.h
+
+    class HashBitmap {
+    private:
+        internal_id_t * m_table{nullptr};
+        internal_id_t m_table_size{0};
+        internal_id_t m_table_mask{0};
+        std::unordered_set<uint32_t > m_set;
+        [[nodiscard]] internal_id_t hash(internal_id_t id) const {
+            return id & m_table_mask;
+        }
+
+    public:
+        HashBitmap() = default;
+        explicit HashBitmap(size_t capacity){
+            size_t bitSize = 0;
+            size_t bit = capacity;
+            while (bit != 0) {
+                bitSize++;
+                bit >>= 1;
+            }
+            m_table_size = 0x1 << ((bitSize + 4) / 2 + 3);
+            m_table_mask = m_table_size - 1;
+            m_table = WorkMemoryPool::Global().Alloc<internal_id_t>(m_table_size * sizeof(internal_id_t));
+            memset(m_table, 0, sizeof(uint32_t) * m_table_size); // Initialize all elements to 0
+
+        }
+        ~HashBitmap() {
+            if (m_table) {
+                WorkMemoryPool::Global().Free(m_table);
+                m_table_size = 0;
+                m_table_mask = 0;
+                m_set.clear();
+            }
+        }
+
+        void set(internal_id_t id) {
+            internal_id_t pos = hash(id);
+            if (m_table[pos] == 0) {
+                m_table[pos] = id;
+            } else {
+                if (m_table[pos] != id) {
+                    m_set.insert(id);
+                }
+            }
+        }
+
+        [[nodiscard]] bool test(internal_id_t id) const {
+            internal_id_t pos = hash(id);
+            auto flag = m_table[pos];
+            if (flag == 0) {
+                return false;
+            } else if (flag == id) {
+                return true;
+            } else {
+                return m_set.contains(id);
+            }
+        }
+
+
+        void Advance() {
+//            memset(m_table, 0, sizeof(uint32_t) * m_table_size); // Initialize all elements to 0
+//            m_set.clear();
+        };
+
+        void Mark(internal_id_t id) {
+            set(id);
+        };
+
+        [[nodiscard]] bool IsVisited(internal_id_t id) const {
+            return test(id);
+        };
+
+        void Prefetch(internal_id_t id) const {
+            _mm_prefetch(m_table + hash(id), _MM_HINT_T0);
+        }
+    };
+
     class Bitmap {
     private:
         uint32_t * m_data{nullptr};  // Using vector of uint32_t for storage
@@ -62,8 +140,13 @@ namespace pickle
 
         void reset() {
 //            memset(m_data, 0, m_size * sizeof(uint32_t ));
-            memset(m_data, 0, m_max_index * sizeof(uint32_t));
+            memset(m_data, 0, (m_max_index + 1) * sizeof(uint32_t));
             m_max_index = 0;
+        }
+
+        void prefetch(internal_id_t id) {
+            int idx = (id / 512) * (512 / 32);
+            _mm_prefetch(m_data + idx, _MM_HINT_T0);
         }
 
         void set_size(size_t new_size) {
@@ -71,6 +154,7 @@ namespace pickle
             assert(m_capacity >= m_size);
             // reset();
         }
+
     };
 
     class BloomFilter
@@ -164,7 +248,11 @@ namespace pickle
        void Advance() {
            m_bitmap.reset();
        }
-
+       
+       void Prefetch(internal_id_t id) {
+            m_bitmap.prefetch(id);
+       }
+       
        void Mark(internal_id_t id) {
            m_bitmap.set(id);
        };

@@ -8,15 +8,16 @@
 #include <map>
 #include <algorithm>
 #include <cstring>
+#include <immintrin.h>
+
 #include "common.hpp"
 #include "queue.hpp"
 
-namespace pickle {
+namespace pickle::v0 {
     
     class Serializer;
 
-
-    class DynamicNSWGraph {
+    class HNSWLayer {
     private:
         friend Serializer;
         bool m_is_base{false};
@@ -50,7 +51,7 @@ namespace pickle {
         };
 
     public:
-        DynamicNSWGraph() = default;
+        HNSWLayer() = default;
         [[nodiscard]] bool empty() const {
             return m_is_empty;
         }
@@ -187,44 +188,6 @@ namespace pickle {
             assert(IsValid(vid));
         }
 
-//         it can be called multiple times for each vertex (critical path?)
-        void AddReverseEdge(internal_id_t nid, const Entry &edge) {
-            if (nid == edge.m_vid) return;
-            const auto vid = edge.m_vid;
-            std::lock_guard<std::mutex> writeLock{GetMutex(edge.m_vid)};
-            auto v_deg = m_deg_list.at(vid);
-            assert(vid < m_max_node);
-            assert(nid < m_max_node);
-            assert(v_deg <= m_max_deg);
-
-            // Greedy approach for updating edges
-            // The greedy approach always keeps top max_degree closest edges
-            // keep adjacency list and distance sorted, small distance edges will be stored in the front
-            auto dist_ptr = m_dist_list.data() + vid * m_max_deg;
-            auto adj_ptr = m_adj_list.data() + vid * m_max_deg;
-            auto offset = std::lower_bound(dist_ptr, dist_ptr + v_deg, edge.m_dist) - dist_ptr;
-            assert(offset <= m_max_deg);
-            if (offset == m_max_deg) {
-                return;
-            } else if (offset == v_deg) {
-                // add to the end if within capacity
-                assert(offset < m_max_deg);
-                adj_ptr[offset] = nid;
-                dist_ptr[offset] = edge.m_dist;
-                m_deg_list.at(vid) += v_deg < m_max_deg;
-            } else {
-                assert(offset < m_max_deg);
-                int end = std::min(v_deg, (int) m_max_deg - 1);
-                for (int i = end; i > offset; i--) {
-                    dist_ptr[i] = dist_ptr[i - 1];
-                    adj_ptr[i] = adj_ptr[i - 1];
-                }
-                adj_ptr[offset] = nid;
-                dist_ptr[offset] = edge.m_dist;
-                m_deg_list.at(vid) += v_deg < m_max_deg;
-            }
-        };
-
         void AddEdge(internal_id_t vid, internal_id_t nid, distance_t distance) {
             std::lock_guard<std::mutex> writeLock{GetMutex(vid)};
             auto v_deg = m_deg_list.at(vid);
@@ -250,27 +213,9 @@ namespace pickle {
                 dist_ptr[offset] = distance;
                 m_deg_list.at(vid) += v_deg < m_max_deg;
             }
-
-//            if (offset >= m_max_deg) {
-//                return;
-//            } else if (offset == v_deg) {
-//                // add to the end if within capacity
-//                *(adj_ptr + offset) = nid;
-//                *(dist_ptr + offset) = distance;
-//                m_deg_list.at(vid) += v_deg < m_max_deg;
-//            } else {
-//                int end = std::min(v_deg, (int) m_max_deg - 1);
-//                for (int i = end; i > offset; i--) {
-//                    dist_ptr[i] = dist_ptr[i - 1];
-//                    adj_ptr[i] = adj_ptr[i - 1];
-//                }
-//                adj_ptr[offset] = nid;
-//                dist_ptr[offset] = distance;
-//                m_deg_list.at(vid) += v_deg < m_max_deg;
-//            }
             assert(IsValid(vid));
         };
     };
 
-    using DynamicNSWGraphPtr = std::shared_ptr<DynamicNSWGraph>;
+    using HNSWLayerPtr = std::shared_ptr<HNSWLayer>;
 }

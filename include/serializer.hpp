@@ -4,7 +4,7 @@
 
 #ifndef PICKLE_SERIALIZER_HPP
 #define PICKLE_SERIALIZER_HPP
-#include "graph.hpp"
+#include "hnsw_layer_v0.hpp"
 #include "common.hpp"
 #include <fstream>
 
@@ -20,11 +20,11 @@ namespace pickle
 
     class Serializer {
     public:
-        static void to_disk(const std::string& filename, const std::vector<DynamicNSWGraphPtr> & graphs);
-        static std::vector<DynamicNSWGraphPtr> from_disk(const std::string& filename);
+        static void to_disk(const std::string& filename, const std::vector<HNSWLayerPtr> & graphs);
+        static std::vector<HNSWLayerPtr> from_disk(const std::string& filename);
     };
 
-    void Serializer::to_disk(const std::string& filename, const std::vector<DynamicNSWGraphPtr> & graphs){
+    void Serializer::to_disk(const std::string& filename, const std::vector<HNSWLayerPtr> & graphs){
         std::ofstream file(filename, std::ios::binary | std::ios::trunc);
         ALWAYS_ASSERT(file.is_open());
         size_t num_graphs = graphs.size();
@@ -54,15 +54,15 @@ namespace pickle
         file.close();
     };
 
-    std::vector<DynamicNSWGraphPtr> Serializer::from_disk(const std::string &filename) {
+    std::vector<HNSWLayerPtr> Serializer::from_disk(const std::string &filename) {
         std::ifstream file(filename, std::ios::binary);
         ALWAYS_ASSERT(file.is_open());
 
-        std::vector<DynamicNSWGraphPtr> graphs;
+        std::vector<HNSWLayerPtr> graphs;
         size_t num_graphs;
         read_from(file, &num_graphs, sizeof(num_graphs));
         for (size_t i = 0; i < num_graphs; i++) {
-            DynamicNSWGraphPtr graph = std::make_shared<DynamicNSWGraph>();
+            HNSWLayerPtr graph = std::make_shared<HNSWLayer>();
             size_t graph_size, num_nodes, max_degree;
             read_from(file, &graph_size, sizeof(graph_size));
             read_from(file, &num_nodes, sizeof(num_nodes));

@@ -35,9 +35,9 @@ namespace pickle
         return cumulative_probability.size() - 1;
     }
 
-    inline std::vector<int> get_random_levels(size_t N, const std::vector<double> &cumulative_probability) {
+    inline std::vector<uint8_t> get_random_levels(size_t N, const std::vector<double> &cumulative_probability) {
 
-        std::vector<int> res(N);
+        std::vector<uint8_t> res(N);
         std::uniform_real_distribution<double> distribution(0.0, 1.0);
         std::mt19937 rng;
         
@@ -76,6 +76,15 @@ namespace pickle
 
         // Shuffle the vector using the Fisher-Yates algorithm
         std::shuffle(indices.begin(), indices.end(), rng);
+        return indices;
+    };
+
+    template <class T> std::vector<T> GetIndices(size_t N) {
+        std::vector<T> indices(N);
+        // Fill the vector with 0, 1, ..., N-1
+        for (size_t i = 0; i < N; ++i) {
+            indices[i] = i;
+        }
         return indices;
     };
 }

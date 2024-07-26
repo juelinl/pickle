@@ -6,7 +6,7 @@
 #define PICKLE_NSW_HPP
 
 #include "queue.hpp"
-#include "graph.hpp"
+#include "hnsw_layer_v0.hpp"
 #include "distance.hpp"
 #include "util.hpp"
 #include "visited.hpp"
@@ -29,7 +29,7 @@ namespace pickle {
 
     template<class T, std::size_t Dim>
     inline std::span<const T, Dim> GetDataForInternalID(internal_id_t vid, size_t dim, std::span<const T> all_data,
-                                                        const DynamicNSWGraphPtr &graph) {
+                                                        const HNSWLayerPtr &graph) {
         auto start = all_data.data() + graph->GetExtID(vid) * dim;
         std::span<const T, Dim> data{start, dim};
         return data;
@@ -52,7 +52,7 @@ namespace pickle {
     }
 
     template<class T, size_t Dim>
-    inline std::vector<Entry> SelectNeighborsHeuristic(DistFunc df, size_t dim, size_t top_k, MaxQueue queue, std::span<const T> all_data, const DynamicNSWGraphPtr& graph, bool keepPruned = true) {
+    inline std::vector<Entry> SelectNeighborsHeuristic(DistFunc df, size_t dim, size_t top_k, MaxQueue queue, std::span<const T> all_data, const HNSWLayerPtr& graph, bool keepPruned = true) {
         size_t num_entry = queue.size();
         MinQueue W;
         MinQueue Wd;
@@ -103,7 +103,7 @@ namespace pickle {
     external_id_t SlideNSWLayer(DistFunc df, size_t dim,
                                 internal_id_t entry_id,
                                 std::span<const T, Dim> q_data, std::span<const T> all_data,
-                                const DynamicNSWGraphPtr &graph) {
+                                const HNSWLayerPtr &graph) {
 
         std::span<const T, Dim> entry_data = GetDataForInternalID<T, Dim>(entry_id, dim, all_data, graph);
         distance_t c_dist = Distance(q_data, entry_data, df);
@@ -132,7 +132,7 @@ namespace pickle {
                                  size_t stop_layer,
                                  std::span<const T, Dim> q_data,
                                  std::span<const T> all_data,
-                                 const std::vector<DynamicNSWGraphPtr> &graphs) {
+                                 const std::vector<HNSWLayerPtr> &graphs) {
 
         assert(entry_layer < graphs.size());
         assert(entry_layer >= stop_layer);
@@ -151,7 +151,7 @@ namespace pickle {
     std::vector<Entry> SearchNSWLayerHeuristic(DistFunc df, size_t top_k, size_t ef,
                                                size_t dim, internal_id_t entry_id,
                                                std::span<const T, Dim> q_data, std::span<const T> all_data,
-                                               const DynamicNSWGraphPtr &graph) {
+                                               const HNSWLayerPtr &graph) {
         MinQueue top_candidates;    // min first data
         MaxQueue nearest_neighbors; // max first data
 
@@ -199,7 +199,7 @@ namespace pickle {
     std::vector<Entry> SearchNSWLayerSimple(DistFunc df, size_t top_k, size_t ef,
                                             size_t dim, internal_id_t entry_id,
                                             std::span<const T, Dim> q_data, std::span<const T> all_data,
-                                            const DynamicNSWGraphPtr &graph) {
+                                            const HNSWLayerPtr &graph) {
         MinQueue top_candidates;    // min first data
         MaxQueue nearest_neighbors; // max first data
 
@@ -240,7 +240,7 @@ namespace pickle {
     std::vector<Entry> SearchBaseSimple(DistFunc df, size_t top_k, size_t ef,
                                         size_t dim, internal_id_t entry_id,
                                         std::span<const T, Dim> q_data, std::span<const T> all_data,
-                                        const DynamicNSWGraphPtr &graph) {
+                                        const HNSWLayerPtr &graph) {
         assert(graph->IsBase());
         MinQueue top_candidates;    // min first data
         MaxQueue nearest_neighbors; // max first data
@@ -286,7 +286,7 @@ namespace pickle {
     std::vector<Entry> SearchNSWLayersSimple(DistFunc df, size_t top_k, size_t ef,
                                              size_t dim, size_t entry_layer,
                                              std::span<const T, Dim> q_data, std::span<const T> all_data,
-                                             const std::vector<DynamicNSWGraphPtr> &graphs) {
+                                             const std::vector<HNSWLayerPtr> &graphs) {
         assert(!graphs.empty());
         external_id_t external_entry_id{empty_external_id};
         if (entry_layer > 0) {
@@ -304,7 +304,7 @@ namespace pickle {
                                  external_id_t q_id,
                                  std::span<const T, Dim> q_data,
                                  std::span<const T> all_data,
-                                 DynamicNSWGraphPtr &graph) {
+                                 HNSWLayerPtr &graph) {
         assert(Dim == std::dynamic_extent || Dim == dim);
         assert(q_data.size() == dim);
 
@@ -336,7 +336,7 @@ namespace pickle {
                          external_id_t q_id,
                          std::span<const T, Dim> q_data,
                          std::span<const T> all_data,
-                         const std::vector<DynamicNSWGraphPtr> &graphs) {
+                         const std::vector<HNSWLayerPtr> &graphs) {
 
         assert(Dim == std::dynamic_extent || Dim == dim);
         assert(q_data.size() == dim);
@@ -375,11 +375,11 @@ namespace pickle {
     }
 
     template<class T, std::size_t Dim = std::dynamic_extent>
-    DynamicNSWGraphPtr BuildNSWLayer(DistFunc df, size_t ef, size_t max_degree, size_t dim,
-                                     const std::vector<external_id_t> &external_ids,
-                                     std::span<const T> all_data) {
+    HNSWLayerPtr BuildNSWLayer(DistFunc df, size_t ef, size_t max_degree, size_t dim,
+                               const std::vector<external_id_t> &external_ids,
+                               std::span<const T> all_data) {
         assert(Dim == std::dynamic_extent || Dim == dim);
-        auto graph = std::make_shared<DynamicNSWGraph>();
+        auto graph = std::make_shared<HNSWLayer>();
         graph->Init(max_degree, external_ids.size());
 
 #pragma omp parallel for schedule(static, 128)
@@ -392,9 +392,9 @@ namespace pickle {
     }
 
     template<class T, std::size_t Dim = std::dynamic_extent>
-    std::vector<DynamicNSWGraphPtr> BuildNSWLayers(DistFunc df, size_t ef, size_t max_degree, size_t dim,
-                                                   const std::vector<external_id_t> &external_ids,
-                                                   std::span<const T> all_data) {
+    std::vector<HNSWLayerPtr> BuildNSWLayers(DistFunc df, size_t ef, size_t max_degree, size_t dim,
+                                             const std::vector<external_id_t> &external_ids,
+                                             std::span<const T> all_data) {
 
         auto cumulative_probability = get_cumulative_probability(max_degree);
         auto start_layers = get_random_levels(external_ids.size(), cumulative_probability);
@@ -408,11 +408,11 @@ namespace pickle {
 
         assert(num_nodes[0] == external_ids.size());
 
-        std::vector<DynamicNSWGraphPtr> graphs;
+        std::vector<HNSWLayerPtr> graphs;
         for (size_t i = 0; i <= max_layer; i++) {
             bool is_base = i == 0;
             size_t M = is_base ? max_degree * 2 : max_degree;
-            graphs.push_back(std::make_shared<DynamicNSWGraph>());
+            graphs.push_back(std::make_shared<HNSWLayer>());
             graphs.at(i)->Init(M, num_nodes[i], is_base);
         }
 
