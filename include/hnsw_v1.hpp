@@ -53,7 +53,7 @@ namespace pickle::v1 {
         template<class T, size_t Dim>
         [[nodiscard]] std::vector<std::vector<Entry>> AnnSearch(int top_k, int search_ef, NDArray query) const;
 
-        template<class T, size_t Dim>
+        template<class T, size_t Dim, bool collect_metric=false>
         internal_id_t SlideLayer(internal_id_t enter_id, int level,
                                  std::span<const T, Dim> query) const;
 
@@ -333,7 +333,7 @@ namespace pickle::v1 {
         return nearest_neighbors;
     };
 
-    template<class T, size_t Dim>
+    template<class T, size_t Dim, bool collect_metric>
     internal_id_t HNSWGraph::SlideLayer(internal_id_t enter_id, int level,
                                         std::span<const T, Dim> query) const {
         assert(!empty(level));
@@ -342,13 +342,21 @@ namespace pickle::v1 {
         auto c_data = GetData<T, Dim>(enter_id, level);
         auto c_dist = Distance(query, c_data, df);
         visited.Mark(enter_id);
-
+        if (collect_metric) {
+            Profiler::Global()->AddHop(1);
+        }
         bool updated;
         do {
             updated = false;
             auto c_adj = GetAdj(c_id, level);
+            if (collect_metric) {
+                Profiler::Global()->AddNeighbor(c_adj.size());
+            }
             for (const auto vid: c_adj) {
                 if (!visited.IsVisited(vid)) {
+                    if (collect_metric) {
+                        Profiler::Global()->AddDist(1);
+                    }
                     auto v_data = GetData<T, Dim>(vid, level);
                     auto v_dist = Distance(query, v_data, df);
                     if (v_dist < c_dist) {
@@ -386,7 +394,7 @@ namespace pickle::v1 {
 
         for (int level = ent_l; level >= 1; level--) {
             enter_in_id = GetEntInID(enter_ext_id, level);
-            enter_in_id = SlideLayer<T, Dim>(enter_in_id, level, query);
+            enter_in_id = SlideLayer<T, Dim, true>(enter_in_id, level, query);
             enter_ext_id = GetExtID(enter_in_id, level);
         }
 

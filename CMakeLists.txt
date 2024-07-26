@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.22)
+set(MKL_DIR /data/opt/intel/mkl/2024.2/lib/cmake/mkl/)
+set(FAISS_ENABLE_GPU OFF)
+set(FAISS_ENABLE_PYTHON OFF)
+set(FAISS_ENABLE_RAFT OFF)
 
 project(pickle)
 
@@ -15,6 +19,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -funsafe-math-optimizati
 
 # Official HNSW Repo
 add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/hnswlib)
+
+# Faiss
+add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/faiss)
 
 # Read Numpy File in C++ Program
 add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/cnpy)

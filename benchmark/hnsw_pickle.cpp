@@ -19,13 +19,13 @@ std::shared_ptr<HNSWGraph> build(const Config& config, Dataset dataset) {
     if (num_row >= 1000000) logger->info("Adding {}M points", num_row / 1000000);
     else logger->info("Adding {}K points", num_row / 1000);
 
-    NDArray all_data(dataset.feat.data_holder, dataset.feat_dtype, dataset.feat.shape);
+    NDArray all_data(dataset.feat.data_holder, dataset.dtype, dataset.feat.shape);
     auto ext_ids = GetRandIndices<external_id_t>(num_row);
 
     Timer timer;
     timer.start();
     auto index = std::make_shared<HNSWGraph>(config.max_degree, config.build_ef, config.df);
-    ATEN_DTYPE_SWITCH(dataset.feat_dtype, DType, {
+    ATEN_DTYPE_SWITCH(dataset.dtype, DType, {
        index->Build<DType, std::dynamic_extent>(ext_ids, all_data);
     });
     timer.end();
@@ -42,11 +42,10 @@ void bench(Config config, Dataset dataset, std::shared_ptr<HNSWGraph> index) {
     typedef std::vector<Entry> ResultType;
 
     auto logger = GetLogger(config.log_path, "pickle_bench");
+//    logger->info("START BENCHMARK");
     size_t dataset_size = GetCurrentMemoryUsage();
     size_t num_row = dataset.query.shape[0];
-    NDArray all_query(dataset.query.data_holder, dataset.feat_dtype, dataset.query.shape);
-
-
+    NDArray all_query(dataset.query.data_holder, dataset.dtype, dataset.query.shape);
     std::vector<int> all_k{1, 10, 100};
     std::vector<int> all_search_ef{1, 5, 10, 20, 30, 50, 70, 90, 100, 200, 300};
 
@@ -59,7 +58,7 @@ void bench(Config config, Dataset dataset, std::shared_ptr<HNSWGraph> index) {
 
             Timer timer;
             timer.start();
-            ATEN_DTYPE_SWITCH(dataset.feat_dtype, DType, {
+            ATEN_DTYPE_SWITCH(dataset.dtype, DType, {
                 results = index->AnnSearch<DType, std::dynamic_extent>(k, search_ef, all_query);
             });
             timer.end();
@@ -90,11 +89,12 @@ void bench(Config config, Dataset dataset, std::shared_ptr<HNSWGraph> index) {
             logger->info("k={} search_ef={} recall={:.1f} qps={} hop={:.1f} neighbor={:.1f} dist={:.1f} build_ef={} ", k, search_ef, recall, int(qps), hop, neighbor, dist, build_ef);
         }
     }
+//    logger->info("END BENCHMARK");
 }
 
 int main(int argc, char *argv[]) {
     Config config(argc, argv);
-    auto dataset = config.LoadDataset();
+    auto dataset = LoadDataset(config);
     auto graph = build(config, dataset);
     bench(config, dataset, graph);
 }

@@ -20,7 +20,7 @@
 
 using namespace pickle;
 
-inline auto GetLogger(const std::string& filename, const std::string& name="hnsw", bool truncate = true) {
+inline auto GetLogger(const std::string& filename, const std::string& name, bool truncate = true) {
     auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filename, truncate);
     auto stdout_sink = std::make_shared<spdlog::sinks::stdout_sink_mt>();
     // Create a combined sink that duplicates messages to both file and stdout
@@ -28,6 +28,7 @@ inline auto GetLogger(const std::string& filename, const std::string& name="hnsw
     auto logger = std::make_shared<spdlog::logger>(name, sinks.begin(), sinks.end());
     spdlog::register_logger(logger);
     spdlog::set_level(spdlog::level::info);
+//    spdlog::flush_on(spdlog::level::info);
     return logger;
 };
 
@@ -100,7 +101,7 @@ struct Dataset
     cnpy::NpyArray distance;
     cnpy::NpyArray query;
     cnpy::NpyArray feat;
-    DataType feat_dtype;
+    DataType dtype; // feat and query data type
 
     template<class T>
     T* GetFeat(size_t idx) {
@@ -124,6 +125,36 @@ struct Dataset
         return {start, end};
     }
 };
+
+inline cnpy::NpyArray ToFloat(DataType dtype, const cnpy::NpyArray& input) {
+    if (dtype == pickle::DataType::Float32) {
+        ALWAYS_ASSERT(input.word_size == sizeof(float));
+        return input;
+    }
+
+    auto output = cnpy::NpyArray(input.shape, sizeof(float), false);
+    ATEN_DTYPE_SWITCH(dtype, DType, {
+        auto input_data = input.data<DType>();
+        auto output_data = output.data<float>();
+        auto total_elem = input.num_vals;
+        for (size_t i = 0; i < input.num_vals; i++){
+            output_data[i] = static_cast<float>(input_data[i]);
+        }
+    });
+    return output;
+}
+
+inline Dataset ToFloat(const Dataset& input) {
+    if (input.dtype == DataType::Float32) {
+        return input;
+    }
+
+    Dataset output = input;
+    output.feat = ToFloat(input.dtype, input.feat);
+    output.query = ToFloat(input.dtype, input.query);
+    output.dtype = DataType::Float32;
+    return output;
+}
 
 struct Config {
     DistFunc df{DistFunc::RUNTIME};
@@ -211,20 +242,21 @@ struct Config {
         log_path = program.get<std::string>("--log_path");
         num_threads = program.get<size_t>("--num_threads");
     }
-
-    [[nodiscard]] Dataset LoadDataset() const {
-        ALWAYS_ASSERT(!distance_path.empty());
-        ALWAYS_ASSERT(!label_path.empty());
-        ALWAYS_ASSERT(!query_path.empty());
-        ALWAYS_ASSERT(!feat_path.empty());
-
-        Dataset dataset;
-        dataset.distance = cnpy::npy_load(distance_path);
-        dataset.label = cnpy::npy_load(label_path);
-        dataset.query = cnpy::npy_load(query_path);
-        dataset.feat = cnpy::npy_load(feat_path);
-        dataset.feat_dtype = GetNumpyType(feat_path);
-        return dataset;
-    }
 };
+
+[[nodiscard]] inline Dataset LoadDataset(const Config& config) {
+    ALWAYS_ASSERT(!config.distance_path.empty());
+    ALWAYS_ASSERT(!config.label_path.empty());
+    ALWAYS_ASSERT(!config.query_path.empty());
+    ALWAYS_ASSERT(!config.feat_path.empty());
+
+    Dataset dataset;
+    dataset.distance = cnpy::npy_load(config.distance_path);
+    dataset.label = cnpy::npy_load(config.label_path);
+    dataset.query = cnpy::npy_load(config.query_path);
+    dataset.feat = cnpy::npy_load(config.feat_path);
+    dataset.dtype = GetNumpyType(config.feat_path);
+    return dataset;
+}
+
 #endif //PICKLE_BENCH_UTIL_HPP

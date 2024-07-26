@@ -12,6 +12,11 @@ void build(Config config, Dataset dataset) {
 
     size_t num_row = dataset.feat.shape[0];
     size_t num_col = dataset.feat.shape[1];
+
+    logger->info("Loading Data From: {}", config.feat_path);
+    if (num_row >= 1000000) logger->info("Adding {}M points", num_row / 1000000);
+    else logger->info("Adding {}K points", num_row / 1000);
+
     auto ext_ids = GetRandIndices<size_t>(num_row);
     size_t dataset_size = GetCurrentMemoryUsage();
     SpaceType space(num_col);
@@ -19,10 +24,6 @@ void build(Config config, Dataset dataset) {
     Timer timer;
     timer.start();
     ALWAYS_ASSERT(!config.feat_path.empty());
-    logger->info("Loading Data From: {}", config.feat_path);
-    if (num_row >= 1000000) logger->info("Adding {}M points", num_row / 1000000);
-    else logger->info("Adding {}K points", num_row / 1000);
-
     alg_hnsw = new hnswlib::HierarchicalNSW<DistanceType>(
             &space, num_row, config.max_degree, config.build_ef);
 
@@ -43,9 +44,12 @@ void build(Config config, Dataset dataset) {
 
 template<typename SpaceType, typename DistanceType>
 void bench(Config config, Dataset dataset) {
+
     typedef std::vector<std::pair<DistanceType, hnswlib::labeltype>> ResultType;
     ALWAYS_ASSERT(!config.query_path.empty());
     auto logger = GetLogger(config.log_path, "hnsw_bench");
+//    logger->info("START BENCHMARK");
+
     size_t num_row = dataset.query.shape[0];
     size_t num_col = dataset.query.shape[1];
     SpaceType space(num_col);
@@ -94,25 +98,24 @@ void bench(Config config, Dataset dataset) {
             logger->info("k={} search_ef={} recall={:.1f} qps={} hop={:.1f} dist={:.1f} build_ef={} ", k, search_ef, recall, int(qps), hop, dist, build_ef);
         }
     }
-
+//    logger->info("END BENCHMARK");
 }
 
 int main(int argc, char *argv[]) {
     Config config(argc, argv);
-    auto dataset = config.LoadDataset();
+    auto dataset = LoadDataset(config);
 
     if (config.df == DistFunc::IP) {
         build<hnswlib::InnerProductSpace, float>(config, dataset);
         bench<hnswlib::InnerProductSpace, float>(config, dataset);
     } else if (config.df == DistFunc::L2) {
-        if (dataset.feat_dtype == DataType::Int8 || dataset.feat_dtype == DataType::Uint8) {
+        if (dataset.dtype == DataType::Uint8) {
             build<hnswlib::L2SpaceI, int>(config, dataset);
             bench<hnswlib::L2SpaceI, int>(config, dataset);
-        } else if (dataset.feat_dtype == DataType::Float32) {
+        } else {
+            dataset = ToFloat(dataset);
             build<hnswlib::L2Space, float>(config, dataset);
             bench<hnswlib::L2Space, float>(config, dataset);
-        } else {
-            spdlog::error("Unsupported data format");
         }
     } else {
         spdlog::error("Unsupported data format");

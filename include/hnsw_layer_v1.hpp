@@ -344,11 +344,6 @@ namespace pickle::v1 {
             };
 
             if (keep_pruned) {
-//                while(R.size() < m_max_deg && !Wd.empty()) {
-//                    R.push_back(Wd.top());
-//                    Wd.pop();
-//                }
-
                 std::vector<Entry> other;
                 while(other.size() + R.size() < m_max_deg && !Wd.empty()) {
                     other.push_back(Wd.top());
@@ -358,12 +353,15 @@ namespace pickle::v1 {
                 R = merge(R, other);
             }
 
-            for (size_t i = 0; i < m_max_deg; i++) {
+            assert(R.size() <= m_max_deg);
+            degree_t new_deg = std::min(m_max_deg, R.size());
+
+            for (degree_t i = 0; i < new_deg; i++) {
                 adj[i] = R[i].m_vid;
                 dist[i] = R[i].m_dist;
             }
-
             m_node_list.at(vid).m_heuristic = 1;
+            SetDegree(vid, new_deg);
             assert(IsValid(vid));
         }
 
