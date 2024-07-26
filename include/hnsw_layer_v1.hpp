@@ -66,16 +66,16 @@ namespace pickle::v1 {
 
     private:
         friend Serializer;
-        bool m_is_base{false};
+        bool m_use_table{false};
         bool m_is_empty{true};
         internal_id_t m_ent_id{0};
         internal_id_t m_next_id{0};
-        size_t m_max_deg{0};
-        size_t m_max_node{0};
+        size_t m_max_degree{0};
+        size_t m_capacity{0};
         std::mutex m_id_mutex{};
-        std::map<external_id_t, internal_id_t> m_ext2in; // mapping external id to internal id (only use if not base layer)
+        std::map<external_id_t, internal_id_t> m_ext2in_map; // mapping external id to internal id (only use if not base layer)
         mutable std::shared_mutex m_map_mutex;
-        std::vector<internal_id_t > m_ext2in_base; // mapping external id to internal id (only use if is base layer)
+        std::vector<internal_id_t > m_ext2in_table; // mapping external id to internal id (only use if is base layer)
         std::vector<internal_id_t> m_adj_list; // adjacency list
         std::vector<distance_t> m_dist_list; // distance between node to its neighbors
         std::vector<NodeMeta> m_node_list; // degree of adjacency list
@@ -90,12 +90,12 @@ namespace pickle::v1 {
 
         void Clear() {
             m_is_empty = true;
-            m_max_deg = 0;
-            m_max_node = 0;
+            m_max_degree = 0;
+            m_capacity = 0;
             m_node_list.clear();
             m_adj_list.clear();
             m_dist_list.clear();
-            m_ext2in.clear();
+            m_ext2in_map.clear();
             m_data = NDArray();
         };
 
@@ -110,7 +110,7 @@ namespace pickle::v1 {
         }
 
         [[nodiscard]] size_t GetCapacity() const {
-            return m_max_node;
+            return m_capacity;
         }
 
         [[nodiscard]] size_t GetDegree(internal_id_t vid) const {
@@ -123,12 +123,12 @@ namespace pickle::v1 {
 
         [[nodiscard]] external_id_t GetExtID(internal_id_t vid) const {
             assert(!m_is_empty);
-            assert(vid < m_max_node);
+            assert(vid < m_capacity);
             return m_node_list.at(vid).m_ext_id;
         };
 
         void SetExtID(internal_id_t vid, external_id_t ext_id) {
-            assert(vid < m_max_node);
+            assert(vid < m_capacity);
             m_node_list.at(vid).m_ext_id = ext_id;
         };
 
@@ -145,15 +145,15 @@ namespace pickle::v1 {
         [[nodiscard]] internal_id_t NewInID(external_id_t ext_id) {
             const std::lock_guard<std::mutex> guard{m_id_mutex};
             internal_id_t new_in_id = m_next_id++;
-            assert(new_in_id < m_max_node);
+            assert(new_in_id < m_capacity);
             SetExtID(new_in_id, ext_id);
-            if (m_is_base) {
-                assert(m_ext2in_base.at(ext_id) == empty_internal_id);
-                m_ext2in_base.at(ext_id) = new_in_id;
+            if (m_use_table) {
+                assert(m_ext2in_table.at(ext_id) == empty_internal_id);
+                m_ext2in_table.at(ext_id) = new_in_id;
             } else {
                 std::unique_lock<std::shared_mutex> lock(m_map_mutex);
-                assert(!m_ext2in.contains(ext_id));
-                m_ext2in[ext_id] = new_in_id;
+                assert(!m_ext2in_map.contains(ext_id));
+                m_ext2in_map[ext_id] = new_in_id;
             }
             m_is_empty = false;
             return new_in_id;
@@ -161,14 +161,14 @@ namespace pickle::v1 {
 
         [[nodiscard]] internal_id_t GetInID(external_id_t external_id) const {
             assert(!m_is_empty);
-            if (m_is_base) {
-                auto id = m_ext2in_base.at(external_id);
+            if (m_use_table) {
+                auto id = m_ext2in_table.at(external_id);
                 assert(id != empty_internal_id);
                 return id;
             } else {
                 std::shared_lock<std::shared_mutex> lock(m_map_mutex);
-                assert(m_ext2in.contains(external_id));
-                auto id = m_ext2in.at(external_id);
+                assert(m_ext2in_map.contains(external_id));
+                auto id = m_ext2in_map.at(external_id);
                 return id;
             }
         };
@@ -180,59 +180,55 @@ namespace pickle::v1 {
         };
 
         [[nodiscard]] std::span<internal_id_t> GetAdj(internal_id_t vid) {
-            assert(vid < m_max_node);
-            return {m_adj_list.data() + m_max_deg * vid, GetDegree(vid)};
+            assert(vid < m_capacity);
+            return {m_adj_list.data() + m_max_degree * vid, GetDegree(vid)};
         };
 
         [[nodiscard]] std::span<const internal_id_t> GetAdj(internal_id_t vid) const {
-            assert(vid < m_max_node);
-            return {m_adj_list.data() + m_max_deg * vid, GetDegree(vid)};
+            assert(vid < m_capacity);
+            return {m_adj_list.data() + m_max_degree * vid, GetDegree(vid)};
         };
 
         [[nodiscard]] std::span<distance_t> GetDist(internal_id_t vid) {
-            assert(vid < m_max_node);
-            return {m_dist_list.data() + m_max_deg * vid, GetDegree(vid)};
+            assert(vid < m_capacity);
+            return {m_dist_list.data() + m_max_degree * vid, GetDegree(vid)};
         };
 
         [[nodiscard]] std::span<const distance_t> GetDist(internal_id_t vid) const {
-            return {m_dist_list.data() + m_max_deg * vid, GetDegree(vid)};
+            return {m_dist_list.data() + m_max_degree * vid, GetDegree(vid)};
         };
 
-        [[nodiscard]] bool IsBase() const {return m_is_base;};
+        [[nodiscard]] bool IsBase() const {return m_use_table;};
 
         [[nodiscard]] bool IsFirstTimeAddEdge(internal_id_t vid) const {
             return m_node_list.at(vid).m_heuristic == 0;
         }
 
-        void Init(size_t max_node_degree, size_t node_capacity, bool is_base, DataType dtype, const std::vector<size_t>& shape, DistFunc df) {
+        void Init(size_t max_degree, size_t node_capacity, external_id_t max_node_id, DataType dtype, const std::vector<size_t>& shape, DistFunc df) {
             Clear();
-            m_is_base = is_base;
-            m_max_deg = max_node_degree;
-            m_max_node = node_capacity;
-            m_adj_list.resize(m_max_node * m_max_deg, empty_internal_id);
-            m_dist_list.resize(m_max_node * m_max_deg, std::numeric_limits<distance_t>::max());
-            m_node_list.resize(m_max_node);
-            if (m_is_base) {
-                m_ext2in_base.resize(m_max_node, empty_internal_id);
-                m_update_mutex = std::vector<std::mutex>(8192);
-            } else {
-                m_update_mutex = std::vector<std::mutex>(m_max_node);
-            }
+            m_use_table = true;
+            m_max_degree = max_degree;
+            m_capacity = node_capacity;
+            m_adj_list.resize(m_capacity * m_max_degree, empty_internal_id);
+            m_dist_list.resize(m_capacity * m_max_degree, std::numeric_limits<distance_t>::max());
+            m_node_list.resize(m_capacity);
+            m_ext2in_table.resize(max_node_id, empty_internal_id);
+            m_update_mutex = std::vector<std::mutex>(std::max(8192ul, node_capacity));
             m_data = NDArray(dtype, shape);
             m_df = df;
         };
 
         void CreateMap() {
-            if (m_is_base) {
-                m_ext2in_base.clear();
-                m_ext2in_base.resize(m_max_node, empty_internal_id);
+            if (m_use_table) {
+                m_ext2in_table.clear();
+                m_ext2in_table.resize(m_capacity, empty_internal_id);
                 for (internal_id_t i = 0; i < m_next_id; i++) {
-                    m_ext2in_base.at(GetExtID(i)) = i;
+                    m_ext2in_table.at(GetExtID(i)) = i;
                 }
             } else {
-                m_ext2in.clear();
+                m_ext2in_map.clear();
                 for (internal_id_t i = 0; i < m_next_id; i++) {
-                    m_ext2in.insert({GetExtID(i), i});
+                    m_ext2in_map.insert({GetExtID(i), i});
                 }
             }
         };
@@ -252,12 +248,12 @@ namespace pickle::v1 {
         template<class T, size_t Dim>
         void AddNode(internal_id_t vid, std::span<const Entry> neighbors, std::span<const T, Dim> vdata) {
             std::lock_guard<std::mutex> writeLock{GetMutex(vid)};
-            assert(vid < m_max_node);
+            assert(vid < m_capacity);
             auto adj = GetAdj(vid);
             auto dist = GetDist(vid);
             for (size_t i = 0; i < neighbors.size(); i++) {
                 assert(vid != neighbors[i].m_vid);
-                assert(neighbors[i].m_vid < m_max_node);
+                assert(neighbors[i].m_vid < m_capacity);
                 assert(i+1 == neighbors.size() || neighbors[i].m_vid != neighbors[i+1].m_vid);
                 adj[i] = neighbors[i].m_vid;
                 dist[i] = neighbors[i].m_dist;
@@ -273,25 +269,25 @@ namespace pickle::v1 {
         void AddEdgeSimple(internal_id_t vid, internal_id_t nid, distance_t distance) {
 //            auto v_deg = m_deg_list.at(vid);
             auto v_deg = GetDegree(vid);
-            assert(v_deg <= m_max_deg);
+            assert(v_deg <= m_max_degree);
             assert(vid != nid);
-            assert(vid < m_max_node);
-            assert(nid < m_max_node);
+            assert(vid < m_capacity);
+            assert(nid < m_capacity);
             // Greedy approach for updating edges
             // The greedy approach always keeps top max_degree closest edges
             // keep adjacency list and distance sorted, small distance edges will be stored in the front
-            auto dist_ptr = &m_dist_list.at(vid * m_max_deg);
-            auto adj_ptr = &m_adj_list.at(vid * m_max_deg);
+            auto dist_ptr = &m_dist_list.at(vid * m_max_degree);
+            auto adj_ptr = &m_adj_list.at(vid * m_max_degree);
             auto offset = std::lower_bound(dist_ptr, dist_ptr + v_deg, distance) - dist_ptr;
-            if (offset < m_max_deg) {
-                int end = std::min(v_deg, m_max_deg - 1);
+            if (offset < m_max_degree) {
+                int end = std::min(v_deg, m_max_degree - 1);
                 for (int i = end; i > offset; i--) {
                     dist_ptr[i] = dist_ptr[i - 1];
                     adj_ptr[i] = adj_ptr[i - 1];
                 }
                 adj_ptr[offset] = nid;
                 dist_ptr[offset] = distance;
-                degree_t new_deg = v_deg + (v_deg < m_max_deg);
+                degree_t new_deg = v_deg + (v_deg < m_max_degree);
                 SetDegree(vid, new_deg);
             }
             assert(IsValid(vid));
@@ -300,10 +296,10 @@ namespace pickle::v1 {
         template<class T, size_t Dim>
         void AddEdgeHeuristicFirstTime(internal_id_t vid, internal_id_t nid, distance_t distance, bool keep_pruned) {
             auto v_deg = GetDegree(vid);
-            assert(v_deg == m_max_deg);
+            assert(v_deg == m_max_degree);
             assert(vid != nid);
-            assert(vid < m_max_node);
-            assert(nid < m_max_node);
+            assert(vid < m_capacity);
+            assert(nid < m_capacity);
             MinHeap W;
             MinHeap Wd;
             std::vector<Entry> R;
@@ -345,7 +341,7 @@ namespace pickle::v1 {
 
             if (keep_pruned) {
                 std::vector<Entry> other;
-                while(other.size() + R.size() < m_max_deg && !Wd.empty()) {
+                while(other.size() + R.size() < m_max_degree && !Wd.empty()) {
                     other.push_back(Wd.top());
                     Wd.pop();
                 }
@@ -353,8 +349,8 @@ namespace pickle::v1 {
                 R = merge(R, other);
             }
 
-            assert(R.size() <= m_max_deg);
-            degree_t new_deg = std::min(m_max_deg, R.size());
+            assert(R.size() <= m_max_degree);
+            degree_t new_deg = std::min(m_max_degree, R.size());
 
             for (degree_t i = 0; i < new_deg; i++) {
                 adj[i] = R[i].m_vid;
@@ -369,10 +365,10 @@ namespace pickle::v1 {
         template<class T, size_t Dim>
         void AddEdgeHeuristic(const internal_id_t vid, const internal_id_t nid, const distance_t distance, bool keep_pruned) {
             auto v_deg = GetDegree(vid);
-            assert(v_deg == m_max_deg);
+            assert(v_deg == m_max_degree);
             assert(vid != nid);
-            assert(vid < m_max_node);
-            assert(nid < m_max_node);
+            assert(vid < m_capacity);
+            assert(nid < m_capacity);
 
             auto dist = GetDist(vid);
             auto adj = GetAdj(vid);
@@ -415,7 +411,7 @@ namespace pickle::v1 {
                 dist[offset] = distance;
             } else {
                 std::vector<Entry> R;
-                for (size_t v2_idx = offset; v2_idx < m_max_deg; v2_idx++){
+                for (size_t v2_idx = offset; v2_idx < m_max_degree; v2_idx++){
                     auto v2_id = adj[v2_idx];
                     auto v2_q_dist = dist[v2_idx];
                     auto v2_data = GetData<T, Dim>(v2_id);
@@ -430,7 +426,7 @@ namespace pickle::v1 {
                 adj[offset] = nid;
                 dist[offset] = distance;
                 for (size_t i = 0; i < R.size(); i++) {
-                    if (i + offset + 1 < m_max_deg) {
+                    if (i + offset + 1 < m_max_degree) {
                         adj[i + offset + 1] = R[i].m_vid;
                         dist[i + offset + 1] = R[i].m_dist;
                     }
@@ -445,7 +441,7 @@ namespace pickle::v1 {
             std::lock_guard<std::mutex> writeLock{GetMutex(vid)};
             auto v_deg = GetDegree(vid);
             assert(IsValid(vid));
-            if (v_deg < m_max_deg) {
+            if (v_deg < m_max_degree) {
                 AddEdgeSimple(vid, nid, distance);
             } else {
                 AddEdgeHeuristicFirstTime<T, Dim>(vid, nid, distance, true);

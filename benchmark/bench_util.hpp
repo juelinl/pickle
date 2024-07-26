@@ -4,6 +4,7 @@
 
 #ifndef PICKLE_BENCH_UTIL_HPP
 #define PICKLE_BENCH_UTIL_HPP
+
 #include <thread>
 #include <cnpy.h>
 #include <spdlog/spdlog.h>
@@ -20,11 +21,11 @@
 
 using namespace pickle;
 
-inline auto GetLogger(const std::string& filename, const std::string& name, bool truncate = true) {
+inline auto GetLogger(const std::string &filename, const std::string &name, bool truncate = true) {
     auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filename, truncate);
     auto stdout_sink = std::make_shared<spdlog::sinks::stdout_sink_mt>();
     // Create a combined sink that duplicates messages to both file and stdout
-    std::vector<spdlog::sink_ptr > sinks = {file_sink, stdout_sink};
+    std::vector<spdlog::sink_ptr> sinks = {file_sink, stdout_sink};
     auto logger = std::make_shared<spdlog::logger>(name, sinks.begin(), sinks.end());
     spdlog::register_logger(logger);
     spdlog::set_level(spdlog::level::info);
@@ -58,16 +59,16 @@ inline unsigned long long GetCurrentMemoryUsage() {
     return memoryUsage;
 }
 
-inline DataType GetNumpyType(std::string fname){
-    FILE* fp = fopen(fname.c_str(), "rb");
+inline DataType GetNumpyType(std::string fname) {
+    FILE *fp = fopen(fname.c_str(), "rb");
 
-    if(!fp) throw std::runtime_error("Unable to open file " + fname);
+    if (!fp) throw std::runtime_error("Unable to open file " + fname);
     char buffer[256];
-    size_t res = fread(buffer,sizeof(char),11,fp);
-    if(res != 11)
+    size_t res = fread(buffer, sizeof(char), 11, fp);
+    if (res != 11)
         throw std::runtime_error("parse_npy_header: failed fread");
-    std::string header = fgets(buffer,256,fp);
-    assert(header[header.size()-1] == '\n');
+    std::string header = fgets(buffer, 256, fp);
+    assert(header[header.size() - 1] == '\n');
 
     //endian, word size, data type
     //byte order code | stands for not applicable.
@@ -76,10 +77,10 @@ inline DataType GetNumpyType(std::string fname){
     if (loc1 == std::string::npos)
         throw std::runtime_error("parse_npy_header: failed to find header keyword: 'descr'");
     loc1 += 9;
-    char type = header[loc1+1];
-    std::string str_ws = header.substr(loc1+2);
+    char type = header[loc1 + 1];
+    std::string str_ws = header.substr(loc1 + 2);
     size_t loc2 = str_ws.find("'");
-    auto word_size = atoi(str_ws.substr(0,loc2).c_str());
+    auto word_size = atoi(str_ws.substr(0, loc2).c_str());
 
     fclose(fp);
     if (type == 'i' && word_size == 1) {
@@ -95,8 +96,7 @@ inline DataType GetNumpyType(std::string fname){
     exit(-1);
 };
 
-struct Dataset
-{
+struct Dataset {
     cnpy::NpyArray label;
     cnpy::NpyArray distance;
     cnpy::NpyArray query;
@@ -104,13 +104,13 @@ struct Dataset
     DataType dtype; // feat and query data type
 
     template<class T>
-    T* GetFeat(size_t idx) {
-        return static_cast<T*>(feat.data<char>() + idx * feat.shape[1] * feat.word_size);
+    T *GetFeat(size_t idx) {
+        return static_cast<T *>(feat.data<char>() + idx * feat.shape[1] * feat.word_size);
     };
 
     template<class T>
-    T* GetQuery(size_t idx) {
-        return static_cast<T*>(query.data<char>() + idx * query.shape[1] * query.word_size);
+    T *GetQuery(size_t idx) {
+        return static_cast<T *>(query.data<char>() + idx * query.shape[1] * query.word_size);
     };
 
     std::vector<int> GetLabel(size_t idx) {
@@ -126,7 +126,7 @@ struct Dataset
     }
 };
 
-inline cnpy::NpyArray ToFloat(DataType dtype, const cnpy::NpyArray& input) {
+inline cnpy::NpyArray ToFloat(DataType dtype, const cnpy::NpyArray &input) {
     if (dtype == pickle::DataType::Float32) {
         ALWAYS_ASSERT(input.word_size == sizeof(float));
         return input;
@@ -137,14 +137,14 @@ inline cnpy::NpyArray ToFloat(DataType dtype, const cnpy::NpyArray& input) {
         auto input_data = input.data<DType>();
         auto output_data = output.data<float>();
         auto total_elem = input.num_vals;
-        for (size_t i = 0; i < input.num_vals; i++){
+        for (size_t i = 0; i < input.num_vals; i++) {
             output_data[i] = static_cast<float>(input_data[i]);
         }
     });
     return output;
 }
 
-inline Dataset ToFloat(const Dataset& input) {
+inline Dataset ToFloat(const Dataset &input) {
     if (input.dtype == DataType::Float32) {
         return input;
     }
@@ -175,7 +175,6 @@ struct Config {
 
     void Init(int argc, char *argv[]) {
         argparse::ArgumentParser program("HNSW build index binary");
-
         program.add_argument("--space").help("one of l2, ip, or cosine").required();
 
         program.add_argument("--max_degree")
@@ -188,10 +187,11 @@ struct Config {
                 .scan<'u', size_t>()
                 .default_value(100ul);
 
+        size_t default_thread_num = std::thread::hardware_concurrency();
         program.add_argument("--num_threads")
                 .help("max num threads")
                 .scan<'u', size_t>()
-                .default_value(size_t(std::thread::hardware_concurrency()));
+                .default_value(default_thread_num);
 
         program.add_argument("--feat_path")
                 .help("path to the feature file")
@@ -244,7 +244,7 @@ struct Config {
     }
 };
 
-[[nodiscard]] inline Dataset LoadDataset(const Config& config) {
+[[nodiscard]] inline Dataset LoadDataset(const Config &config) {
     ALWAYS_ASSERT(!config.distance_path.empty());
     ALWAYS_ASSERT(!config.label_path.empty());
     ALWAYS_ASSERT(!config.query_path.empty());

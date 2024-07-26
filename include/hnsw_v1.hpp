@@ -29,10 +29,10 @@ namespace pickle::v1 {
         };
 
         void Init(size_t max_degree_, size_t build_ef_, DistFunc df_) {
-            max_degree = max_degree_;
-            build_ef = build_ef_;
-            df = df_;
-            cum_prob = get_cumulative_probability(max_degree);
+            m_max_degree = max_degree_;
+            m_build_ef = build_ef_;
+            m_df = df_;
+            m_cumulative_probability = get_cumulative_probability(m_max_degree);
         }
 
         void InitBuffer(size_t max_nodes);
@@ -47,10 +47,10 @@ namespace pickle::v1 {
         MaxHeap SearchLayer(internal_id_t enter_id, int level, int ef,
                             std::span<const T, Dim> query) const;
 
-        template<class T, size_t Dim>
+        template<class T, size_t Dim, bool collect_metric=false>
         std::vector<Entry> AnnSearch(int top_k, int search_ef, std::span<const T, Dim> query) const;
 
-        template<class T, size_t Dim>
+        template<class T, size_t Dim, bool collect_metric=false>
         [[nodiscard]] std::vector<std::vector<Entry>> AnnSearch(int top_k, int search_ef, NDArray query) const;
 
         template<class T, size_t Dim, bool collect_metric=false>
@@ -82,7 +82,7 @@ namespace pickle::v1 {
                 for (const auto& v2: R) {
                     auto v2_id = v2.m_vid; // v2 is the nearest neighbors to return
                     std::span<const T, Dim> v2_data = GetData<T, Dim>(v2_id, level);
-                    auto v1_v2_dist = Distance(v1_data, v2_data, df);
+                    auto v1_v2_dist = Distance(v1_data, v2_data, m_df);
                     // v1 is only inserted if it is closer to the query than any v2
                     // this step avoids adding only nearby nodes to the query's adj list
                     // it allows remote edges to be added as well
@@ -123,117 +123,117 @@ namespace pickle::v1 {
         };
 
     private:
-        size_t max_degree{0};
-        size_t build_ef{0};
-        size_t node_capacity{0};
-        DistFunc df{DistFunc::L2};
+        size_t m_max_degree{0};
+        size_t m_build_ef{0};
+        size_t m_capacity{0};
+        DistFunc m_df{DistFunc::L2};
 
-        internal_id_t ent_level{0};
-        std::mutex level_mutex;
+        internal_id_t m_enter_level{0};
+        std::mutex m_mutex_level;
 
-        std::vector<HNSWLayerPtr> hnsw_layers;
-        std::vector<double> cum_prob;
-        std::vector<uint8_t> insert_level;
-        std::vector<size_t> num_nodes;
-        NDArray data;
+        std::vector<HNSWLayerPtr> m_hnsw_layers;
+        std::vector<double> m_cumulative_probability;
+        std::vector<uint8_t> m_insert_level;
+        std::vector<size_t> m_layer_capacity;
+        NDArray m_data;
 
         [[nodiscard]] internal_id_t GetEnterLevel() const {
-            return ent_level;
+            return m_enter_level;
         }
 
         void SetEntLevel(internal_id_t new_level) {
-            std::lock_guard<std::mutex> guard{level_mutex};
-            if (new_level > ent_level) {
-                ent_level = new_level;
+            std::lock_guard<std::mutex> guard{m_mutex_level};
+            if (new_level > m_enter_level) {
+                m_enter_level = new_level;
             }
         }
 
         [[nodiscard]] bool empty(internal_id_t level) const {
-            return hnsw_layers.at(level)->empty();
+            return m_hnsw_layers.at(level)->empty();
         }
 
         [[nodiscard]] size_t GetNumNode(internal_id_t level) const {
-            return num_nodes.at(level);
+            return m_layer_capacity.at(level);
         }
 
         [[nodiscard]] external_id_t GetExtID(internal_id_t vid, internal_id_t level) const {
-            return hnsw_layers.at(level)->GetExtID(vid);
+            return m_hnsw_layers.at(level)->GetExtID(vid);
         }
 
         [[nodiscard]] internal_id_t GetInID(external_id_t ext_id, internal_id_t level) const {
-            return hnsw_layers.at(level)->GetInID(ext_id);
+            return m_hnsw_layers.at(level)->GetInID(ext_id);
         }
 
         [[nodiscard]] internal_id_t NewInID(external_id_t ext_id, internal_id_t level) {
-            return hnsw_layers.at(level)->NewInID(ext_id);
+            return m_hnsw_layers.at(level)->NewInID(ext_id);
         }
 
         [[nodiscard]] internal_id_t GetEntInID(external_id_t ext_id, internal_id_t level) const {
-            return hnsw_layers.at(level)->GetEntInID(ext_id);
+            return m_hnsw_layers.at(level)->GetEntInID(ext_id);
         }
 
         template<class T, size_t Dim>
         [[nodiscard]] std::span<const T, Dim> GetData(internal_id_t vid,
                                                       internal_id_t level) const {
-            return hnsw_layers.at(level)->GetData<T, Dim>(vid);
+            return m_hnsw_layers.at(level)->GetData<T, Dim>(vid);
         }
 
         template<class T, size_t Dim>
         [[nodiscard]] std::span<const T, Dim> GetDataExt(external_id_t ext_id) const {
-            return data.get_span<T, Dim>(ext_id);
+            return m_data.get_span<T, Dim>(ext_id);
         }
 
         [[nodiscard]] std::span<const internal_id_t>
         GetAdj(internal_id_t vid, internal_id_t level) const {
-            return hnsw_layers.at(level)->GetAdj(vid);
+            return m_hnsw_layers.at(level)->GetAdj(vid);
         }
 
         [[nodiscard]] std::span<const distance_t> GetDist(internal_id_t vid,
                                                           internal_id_t level) const {
-            return hnsw_layers.at(level)->GetDist(vid);
+            return m_hnsw_layers.at(level)->GetDist(vid);
         }
 
         template<class T, size_t Dim>
         void AddEdge(internal_id_t vid, internal_id_t nid, distance_t distance,
                      internal_id_t level) {
-            return hnsw_layers.at(level)->AddEdge<T, Dim>(vid, nid, distance);
+            return m_hnsw_layers.at(level)->AddEdge<T, Dim>(vid, nid, distance);
         }
 
         template<class T, size_t Dim>
         void AddNode(internal_id_t vid, std::span<const Entry> neighbors, std::span<const T, Dim> vdata,
                      internal_id_t level) {
-            return hnsw_layers.at(level)->AddNode<T, Dim>(vid, neighbors, vdata);
+            return m_hnsw_layers.at(level)->AddNode<T, Dim>(vid, neighbors, vdata);
         }
     };
 
     void HNSWGraph::InitBuffer(size_t max_nodes) {
-        node_capacity = max_nodes;
-        insert_level = get_random_levels(node_capacity, cum_prob);
-        int max_level = *std::max_element(insert_level.begin(), insert_level.end());
-        num_nodes = std::vector<size_t>(max_level + 1, 0);
-        for (int l: insert_level) {
+        m_capacity = max_nodes;
+        m_insert_level = get_random_levels(m_capacity, m_cumulative_probability);
+        int max_level = *std::max_element(m_insert_level.begin(), m_insert_level.end());
+        m_layer_capacity = std::vector<size_t>(max_level + 1, 0);
+        for (int l: m_insert_level) {
             for (size_t j = 0; j <= l; j++) {
-                num_nodes.at(j)++;
+                m_layer_capacity.at(j)++;
             }
         }
 
-        hnsw_layers.clear();
+        m_hnsw_layers.clear();
         for (int i = 0; i <= max_level; i++) {
-            size_t max_node_degree = (i == 0) ? 2 * max_degree : max_degree;
+            size_t max_degree = (i == 0) ? 2 * m_max_degree : m_max_degree;
+            size_t node_capacity = m_layer_capacity[i];
+            size_t num_col = m_data.m_shape[1];
+            std::vector<size_t> shape = {node_capacity, num_col};
+            DataType dtype = m_data.m_dtype;
+            auto max_node_id = static_cast<external_id_t>(m_capacity);
             auto g = std::make_shared<HNSWLayer>();
-            bool is_base = (i == 0);
-
-            std::vector<size_t> shape = {num_nodes[i], data.m_shape[1]};
-            DataType dtype = data.m_dtype;
-
-            g->Init(max_node_degree, num_nodes[i], is_base, dtype, shape, df);
-            hnsw_layers.push_back(g);
+            g->Init(max_degree, node_capacity, max_node_id, dtype, shape, m_df);
+            m_hnsw_layers.push_back(g);
         }
     }
 
     template<class T, size_t Dim>
     void HNSWGraph::Insert(external_id_t ext_id, std::span<const T, Dim> query) {
-        int l = insert_level.at(ext_id);
+        int l = m_insert_level.at(ext_id);
         int L = GetEnterLevel();
         auto enter_ext_id{empty_external_id};
         auto enter_in_id{empty_internal_id};
@@ -252,10 +252,10 @@ namespace pickle::v1 {
         for (int level = top_search_level; level >= 0; level--) {
             if (!empty(level)) {
                 enter_in_id = GetEntInID(enter_ext_id, level);
-                auto top_k = (level == 0) ? 2 * max_degree : max_degree;
-                auto ret = SearchLayer<T, Dim>(enter_in_id, level, build_ef, query);
-//                auto entries = SelectHeuristic<T, Dim>(top_k, level, ret, true);
-                auto entries = SelectSimple(top_k, ret);
+                auto top_k = (level == 0) ? 2 * m_max_degree : m_max_degree;
+                auto ret = SearchLayer<T, Dim>(enter_in_id, level, m_build_ef, query);
+                auto entries = SelectHeuristic<T, Dim>(top_k, level, ret, true);
+//                auto entries = SelectSimple(top_k, ret);
                 enter_in_id = entries[0].m_vid;
                 enter_ext_id = GetExtID(enter_in_id, level);
                 entry_list.at(level) = std::move(entries);
@@ -278,7 +278,7 @@ namespace pickle::v1 {
 
         // initialize empty adjacency list for empty level
 
-        if (l > ent_level) SetEntLevel(l);
+        if (l > m_enter_level) SetEntLevel(l);
     };
 
     template<class T, size_t Dim, bool collect_metric>
@@ -289,9 +289,9 @@ namespace pickle::v1 {
         MaxHeap nearest_neighbors{};
 
         assert(top_candidates.begin() != nearest_neighbors.begin());
-        auto &visited = VisitedTable::Global(node_capacity, GetNumNode(level));
+        auto &visited = VisitedTable::Global(m_capacity, GetNumNode(level));
         auto ent_data = GetData<T, Dim>(enter_id, level);
-        auto ent_dist = Distance(query, ent_data, df);
+        auto ent_dist = Distance(query, ent_data, m_df);
         Entry entry(ent_dist, enter_id);
         nearest_neighbors.insert(entry);
         top_candidates.insert(entry);
@@ -318,7 +318,7 @@ namespace pickle::v1 {
                     }
                     visited.Mark(vid);
                     auto v_data = GetData<T, Dim>(vid, level);
-                    auto v_dist = Distance(query, v_data, df);
+                    auto v_dist = Distance(query, v_data, m_df);
                     if (nearest_neighbors.size() < ef ||
                         nearest_neighbors.top().m_dist > v_dist) {
                         nearest_neighbors.insert(v_dist, vid);
@@ -337,10 +337,10 @@ namespace pickle::v1 {
     internal_id_t HNSWGraph::SlideLayer(internal_id_t enter_id, int level,
                                         std::span<const T, Dim> query) const {
         assert(!empty(level));
-        auto &visited = VisitedTable::Global(node_capacity, GetNumNode(level));
+        auto &visited = VisitedTable::Global(m_capacity, GetNumNode(level));
         auto c_id = enter_id;
         auto c_data = GetData<T, Dim>(enter_id, level);
-        auto c_dist = Distance(query, c_data, df);
+        auto c_dist = Distance(query, c_data, m_df);
         visited.Mark(enter_id);
         if (collect_metric) {
             Profiler::Global()->AddHop(1);
@@ -358,7 +358,7 @@ namespace pickle::v1 {
                         Profiler::Global()->AddDist(1);
                     }
                     auto v_data = GetData<T, Dim>(vid, level);
-                    auto v_dist = Distance(query, v_data, df);
+                    auto v_dist = Distance(query, v_data, m_df);
                     if (v_dist < c_dist) {
                         c_id = vid;
                         c_dist = v_dist;
@@ -377,7 +377,7 @@ namespace pickle::v1 {
     template<class T, size_t Dim>
     void HNSWGraph::Build(const std::vector<external_id_t> &ext_ids,
                           const NDArray &all_data) {
-        data = all_data;
+        m_data = all_data;
         InitBuffer(ext_ids.size());
 #pragma omp parallel for schedule(static, 100)
         for (auto ext_id : ext_ids) {
@@ -386,7 +386,7 @@ namespace pickle::v1 {
         }
     };
 
-    template<class T, size_t Dim>
+    template<class T, size_t Dim, bool collect_metric>
     std::vector<Entry> HNSWGraph::AnnSearch(int top_k, int search_ef, std::span<const T, Dim> query) const {
         auto ent_l = GetEnterLevel();
         auto enter_ext_id{empty_external_id};
@@ -394,27 +394,27 @@ namespace pickle::v1 {
 
         for (int level = ent_l; level >= 1; level--) {
             enter_in_id = GetEntInID(enter_ext_id, level);
-            enter_in_id = SlideLayer<T, Dim, true>(enter_in_id, level, query);
+            enter_in_id = SlideLayer<T, Dim, collect_metric>(enter_in_id, level, query);
             enter_ext_id = GetExtID(enter_in_id, level);
         }
 
         enter_in_id = GetEntInID(enter_ext_id, 0);
-        auto res = SearchLayer<T, Dim, true>(enter_in_id, 0, search_ef, query);
+        auto res = SearchLayer<T, Dim, collect_metric>(enter_in_id, 0, search_ef, query);
         return SelectSimpleExt(top_k, res);
     };
 
 
-    template<class T, size_t Dim>
+    template<class T, size_t Dim, bool collect_metric>
     std::vector<std::vector<Entry>> HNSWGraph::AnnSearch(int top_k, int search_ef, NDArray all_query) const {
         size_t num_row = all_query.m_shape[0];
         size_t num_col = all_query.m_shape[1];
         assert(num_col == Dim || Dim == std::dynamic_extent);
         std::vector<std::vector<Entry>> ret(num_row);
 
-//#pragma omp parallel for schedule(static, 50)
+#pragma omp parallel for schedule(dynamic, 20)
         for (size_t i = 0; i < num_row; i++) {
             auto query = all_query.get_span<T, Dim>(i);
-            ret[i] = AnnSearch<T, Dim>(top_k, search_ef, query);
+            ret[i] = AnnSearch<T, Dim, collect_metric>(top_k, search_ef, query);
         }
         return ret;
     };
