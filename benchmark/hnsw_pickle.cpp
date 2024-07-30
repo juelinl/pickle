@@ -3,12 +3,15 @@
 //
 
 #include <omp.h>
-//#include "hnsw_v0.hpp"
-#include "hnsw_v1.hpp"
+//#include "backup/hnsw_v0.hpp"
+//#include "hnsw_v1.hpp"
+#include "hnsw.hpp"
 #include "bench_util.hpp"
 
 //using namespace pickle::v0;
-using namespace pickle::v1;
+//using namespace pickle::v1;
+
+using namespace pickle::v2;
 
 std::shared_ptr<HNSWGraph> build(const Config &config, Dataset dataset) {
     auto logger = GetLogger(config.log_path, "pickle_build");

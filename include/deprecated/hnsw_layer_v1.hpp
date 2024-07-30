@@ -294,7 +294,129 @@ namespace pickle::v1 {
         }
 
         template<class T, size_t Dim>
-        void AddEdgeHeuristicFirstTime(internal_id_t vid, internal_id_t nid, distance_t distance, bool keep_pruned) {
+        void AddEdgeHeuristicFirstTimeV1(internal_id_t vid, internal_id_t nid, distance_t distance, bool keep_pruned) {
+            auto v_deg = GetDegree(vid);
+            assert(v_deg == m_max_degree);
+            assert(vid != nid);
+            assert(vid < m_capacity);
+            assert(nid < m_capacity);
+//            MinHeap W;
+            MinHeap Wd;
+            std::vector<Entry> R;
+
+            auto adj = GetAdj(vid);
+            auto dist = GetDist(vid);
+            auto offset = std::lower_bound(dist.begin(), dist.end(), distance) - dist.begin();
+            {
+                for (size_t v1_idx = 0; v1_idx < offset; v1_idx++){
+                    auto v1_q_dist = dist[v1_idx];
+                    auto v1_id = adj[v1_idx];
+                    Entry v1{v1_q_dist, v1_id};
+
+                    std::span<const T, Dim> v1_data = GetData<T, Dim>(v1_id);
+                    bool insert_v1{true};
+
+                    for (const auto& v2: R) {
+                        auto v2_id = v2.m_vid; // v2 is the nearest neighbors to return
+                        std::span<const T, Dim> v2_data = GetData<T, Dim>(v2_id);
+                        auto v1_v2_dist = Distance(v1_data, v2_data, m_df);
+                        // v1 is only inserted if it is closer to the query than any v2
+                        // this step avoids adding only nearby nodes to the query's adj list
+                        // it allows remote edges to be added as well
+                        if (v1_q_dist > v1_v2_dist) {
+                            insert_v1 = false;
+                            break;
+                        }
+                    }
+                    if (insert_v1) {
+                        R.push_back(v1);
+                    } else if (keep_pruned){
+                        Wd.insert(v1);
+                    }
+                }
+
+            }
+
+            {
+                auto v1_id = nid;
+                auto v1_q_dist = distance;
+                Entry v1{distance, nid};
+                std::span<const T, Dim> v1_data = GetData<T, Dim>(v1_id);
+
+                bool insert_v1{true};
+                for (const auto& v2: R) {
+                    auto v2_id = v2.m_vid; // v2 is the nearest neighbors to return
+                    std::span<const T, Dim> v2_data = GetData<T, Dim>(v2_id);
+                    auto v1_v2_dist = Distance(v1_data, v2_data, m_df);
+                    // v1 is only inserted if it is closer to the query than any v2
+                    // this step avoids adding only nearby nodes to the query's adj list
+                    // it allows remote edges to be added as well
+                    if (v1_q_dist > v1_v2_dist) {
+                        insert_v1 = false;
+                        break;
+                    }
+                }
+                if (insert_v1) {
+                    R.push_back(v1);
+                } else if (keep_pruned){
+                    Wd.insert(v1);
+                }
+            }
+
+            {
+                for (size_t v1_idx = offset; v1_idx < adj.size(); v1_idx++){
+                    auto v1_q_dist = dist[v1_idx];
+                    auto v1_id = adj[v1_idx];
+                    Entry v1{v1_q_dist, v1_id};
+
+                    std::span<const T, Dim> v1_data = GetData<T, Dim>(v1_id);
+                    bool insert_v1{true};
+
+                    for (const auto& v2: R) {
+                        auto v2_id = v2.m_vid; // v2 is the nearest neighbors to return
+                        std::span<const T, Dim> v2_data = GetData<T, Dim>(v2_id);
+                        auto v1_v2_dist = Distance(v1_data, v2_data, m_df);
+                        // v1 is only inserted if it is closer to the query than any v2
+                        // this step avoids adding only nearby nodes to the query's adj list
+                        // it allows remote edges to be added as well
+                        if (v1_q_dist > v1_v2_dist) {
+                            insert_v1 = false;
+                            break;
+                        }
+                    }
+                    if (insert_v1) {
+                        R.push_back(v1);
+                    } else if (keep_pruned){
+                        Wd.insert(v1);
+                    }
+                }
+            }
+
+
+            if (keep_pruned) {
+                std::vector<Entry> other;
+                while(other.size() + R.size() < m_max_degree && !Wd.empty()) {
+                    other.push_back(Wd.top());
+                    Wd.pop();
+                }
+
+                R = merge(R, other);
+            }
+
+            assert(R.size() <= m_max_degree);
+            degree_t new_deg = std::min(m_max_degree, R.size());
+
+            for (degree_t i = 0; i < new_deg; i++) {
+                adj[i] = R[i].m_vid;
+                dist[i] = R[i].m_dist;
+            }
+            m_node_list.at(vid).m_heuristic = 1;
+            SetDegree(vid, new_deg);
+            assert(IsValid(vid));
+        }
+
+        template<class T, size_t Dim>
+        void AddEdgeHeuristicFirstTimeV0(internal_id_t vid, internal_id_t nid, distance_t distance, bool keep_pruned) {
             auto v_deg = GetDegree(vid);
             assert(v_deg == m_max_degree);
             assert(vid != nid);
@@ -444,12 +566,12 @@ namespace pickle::v1 {
             if (v_deg < m_max_degree) {
                 AddEdgeSimple(vid, nid, distance);
             } else {
-                AddEdgeHeuristicFirstTime<T, Dim>(vid, nid, distance, true);
+                AddEdgeHeuristicFirstTimeV1<T, Dim>(vid, nid, distance, true);
             }
 //            if (v_deg < m_max_deg) {
 //                AddEdgeSimple(vid, nid, distance);
 //            } else if (IsFirstTimeAddEdge(vid)) {
-//                AddEdgeHeuristicFirstTime<T, Dim>(vid, nid, distance, true);
+//                AddEdgeHeuristicFirstTimeV1<T, Dim>(vid, nid, distance, true);
 //            } else {
 //                AddEdgeHeuristic<T, Dim>(vid, nid, distance, true);
 //            }

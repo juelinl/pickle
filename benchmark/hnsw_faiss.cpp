@@ -56,7 +56,7 @@ void bench(Config config, Dataset dataset, std::shared_ptr<faiss::IndexHNSW> ind
         for (auto search_ef: all_search_ef) {
             if (search_ef < k) continue;
             index->hnsw.efSearch = search_ef;
-            index->hnsw.search_bounded_queue = true;
+            index->hnsw.search_bounded_queue = false;
             faiss::hnsw_stats.reset();
 
             Timer timer;
