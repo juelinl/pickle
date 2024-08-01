@@ -21,6 +21,9 @@
 
 using namespace pickle;
 
+static const std::vector<int> all_k = {1, 10, 100};
+static const std::vector<int> all_search_ef = {1, 5, 10, 20, 30, 50, 70, 90, 100, 200, 300, 400, 500};
+
 inline auto GetLogger(const std::string &filename, const std::string &name, bool truncate = true) {
     auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filename, truncate);
     auto stdout_sink = std::make_shared<spdlog::sinks::stdout_sink_mt>();

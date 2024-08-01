@@ -54,12 +54,12 @@ namespace pickle {
         EntryVector() = default;
         explicit EntryVector(size_t capacity) {
             m_capacity = capacity;
-            m_data = WorkMemoryPool::Global().Alloc<Entry>(m_capacity * sizeof(Entry));
+            m_data = WorkMemoryPool::ThreadLocal().Alloc<Entry>(m_capacity * sizeof(Entry));
         }
 
         ~EntryVector() {
             if (m_data) {
-                WorkMemoryPool::Global().Free(m_data);
+                WorkMemoryPool::ThreadLocal().Free(m_data);
                 m_capacity = 0;
                 m_len = 0;
             }
@@ -150,7 +150,7 @@ namespace pickle {
         }
     public:
         EntryHeap(): m_comp(), m_capacity{512}, m_len{0} {
-            m_data = WorkMemoryPool::Global().Alloc<Entry>(m_capacity * sizeof(Entry));
+            m_data = WorkMemoryPool::ThreadLocal().Alloc<Entry>(m_capacity * sizeof(Entry));
 //            memset(m_data, 0, capacity * sizeof(Entry));
         }
 
@@ -176,7 +176,7 @@ namespace pickle {
 
         ~EntryHeap() {
             if (m_data) {
-                WorkMemoryPool::Global().Free(m_data);
+                WorkMemoryPool::ThreadLocal().Free(m_data);
                 m_capacity = 0;
                 m_len = 0;
             }
@@ -192,9 +192,9 @@ namespace pickle {
             if (m_len >= m_capacity) {
                 auto old = begin();
                 m_capacity = 8 * m_capacity;
-                m_data = WorkMemoryPool::Global().Alloc<Entry>(m_capacity * sizeof(Entry));
+                m_data = WorkMemoryPool::ThreadLocal().Alloc<Entry>(m_capacity * sizeof(Entry));
                 std::memcpy(begin(), old, sizeof(Entry) * m_len);
-                WorkMemoryPool::Global().Free(old);
+                WorkMemoryPool::ThreadLocal().Free(old);
             }
             begin()[m_len++] = entry;
 //            std::push_heap(begin(), end(), m_comp);
@@ -205,9 +205,9 @@ namespace pickle {
             if (m_len >= m_capacity) {
                 auto old = begin();
                 m_capacity = 8 * m_capacity;
-                m_data = WorkMemoryPool::Global().Alloc<Entry>(m_capacity * sizeof(Entry));
+                m_data = WorkMemoryPool::ThreadLocal().Alloc<Entry>(m_capacity * sizeof(Entry));
                 std::memcpy(begin(), old, sizeof(Entry) * m_len);
-                WorkMemoryPool::Global().Free(old);
+                WorkMemoryPool::ThreadLocal().Free(old);
             }
             begin()[m_len].m_dist = distance;
             begin()[m_len].m_vid = vid;

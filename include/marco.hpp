@@ -67,43 +67,43 @@ namespace pickle {
     }                                                                          \
   } while (0)
 
-#define ATEN_DIM_SWITCH(val, DIM, ...)                                         \
-  do {                                                                         \
-    if (val == 16) {                                                           \
-      constexpr size_t DIM = 16;                                               \
-      { __VA_ARGS__ }                                                          \
-    } else if (val == 32) {                                                    \
-      constexpr size_t DIM = 32;                                               \
-      { __VA_ARGS__ }                                                          \
-    } else if (val == 64) {                                                    \
-      constexpr size_t DIM = 64;                                               \
-      { __VA_ARGS__ }                                                          \
-    } else if (val == 96) {                                                    \
-      constexpr size_t DIM = 96;                                               \
-      { __VA_ARGS__ }                                                          \
-    } else if (val == 100) {                                                   \
-      constexpr size_t DIM = 100;                                              \
-      { __VA_ARGS__ }                                                          \
-    } else if (val == 128) {                                                   \
-      constexpr size_t DIM = 128;                                              \
-      { __VA_ARGS__ }                                                          \
-    } else if (val == 256) {                                                   \
-      constexpr size_t DIM = 256;                                              \
-      { __VA_ARGS__ }                                                          \
-    } else if (val == 384) {                                                   \
-      constexpr size_t DIM = 384;                                              \
-      { __VA_ARGS__ }                                                          \
-    } else if (val == 512) {                                                   \
-      constexpr size_t DIM = 512;                                              \
-      { __VA_ARGS__ }                                                          \
-    } else if (val == 768) {                                                   \
-      constexpr size_t DIM = 768;                                              \
-      { __VA_ARGS__ }                                                          \
-    } else {                                                                   \
-      const size_t DIM = std::dynamic_extent;                                  \
-      { __VA_ARGS__ }                                                          \
-    }                                                                          \
-  } while (0)
+//#define ATEN_DIM_SWITCH(val, DIM, ...)                                         \
+//  do {                                                                         \
+//    if (val == 16) {                                                           \
+//      constexpr size_t DIM = 16;                                               \
+//      { __VA_ARGS__ }                                                          \
+//    } else if (val == 32) {                                                    \
+//      constexpr size_t DIM = 32;                                               \
+//      { __VA_ARGS__ }                                                          \
+//    } else if (val == 64) {                                                    \
+//      constexpr size_t DIM = 64;                                               \
+//      { __VA_ARGS__ }                                                          \
+//    } else if (val == 96) {                                                    \
+//      constexpr size_t DIM = 96;                                               \
+//      { __VA_ARGS__ }                                                          \
+//    } else if (val == 100) {                                                   \
+//      constexpr size_t DIM = 100;                                              \
+//      { __VA_ARGS__ }                                                          \
+//    } else if (val == 128) {                                                   \
+//      constexpr size_t DIM = 128;                                              \
+//      { __VA_ARGS__ }                                                          \
+//    } else if (val == 256) {                                                   \
+//      constexpr size_t DIM = 256;                                              \
+//      { __VA_ARGS__ }                                                          \
+//    } else if (val == 384) {                                                   \
+//      constexpr size_t DIM = 384;                                              \
+//      { __VA_ARGS__ }                                                          \
+//    } else if (val == 512) {                                                   \
+//      constexpr size_t DIM = 512;                                              \
+//      { __VA_ARGS__ }                                                          \
+//    } else if (val == 768) {                                                   \
+//      constexpr size_t DIM = 768;                                              \
+//      { __VA_ARGS__ }                                                          \
+//    } else {                                                                   \
+//      const size_t DIM = std::dynamic_extent;                                  \
+//      { __VA_ARGS__ }                                                          \
+//    }                                                                          \
+//  } while (0)
 
 #define ATEN_DISTANCE_SWITCH(val, DF, ...)                                     \
   do {                                                                         \

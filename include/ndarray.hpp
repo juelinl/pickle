@@ -10,6 +10,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
+#include <xmmintrin.h>
 
 namespace pickle
 {
@@ -92,6 +93,11 @@ namespace pickle
         template <typename T> std::span<T> span() {
             return {data<T>(), m_shape[0] * m_shape[1]};
         };
+
+
+        void Prefetch(size_t row_id) const {
+            _mm_prefetch(get_raw(row_id), _MM_HINT_T0);
+        }
     };
 }
 #endif //PICKLE_NDARRAY_HPP

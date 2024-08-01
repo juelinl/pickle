@@ -1,10 +1,21 @@
 #pragma once
 
 #include "distance/generic.hpp"
-// #include "distance/avx512.hpp"
+
+#ifdef __AVX512F__
+#include "distance/avx512.hpp"
+#endif
+
 namespace pickle {
-    template<class T, DistFunc DF = DistFunc::RUNTIME, std::size_t Extent = std::dynamic_extent>
+    template<class T, std::size_t Extent = std::dynamic_extent>
     float Distance(std::span<const T, Extent> va, std::span<const T, Extent> vb, DistFunc df) {
-        return generic::Distance<T, DF, Extent>(va, vb, df);
+#ifdef __AVX512F__
+        return avx512::Distance<T, Extent>(va, vb, df);
+#else
+        return generic::Distance<T, Extent>(va, vb, df);
+#endif
+
+//        return generic::Distance<T, Extent>(va, vb, df);
+
     };
 }

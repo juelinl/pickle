@@ -76,14 +76,15 @@ namespace pickle::v2 {
         std::vector<internal_id_t> m_adj_list; // adjacency list
         std::vector<distance_t> m_dist_list; // distance between node to its neighbors
         std::vector<NodeMeta> m_node_list; // degree of adjacency list
-        std::vector<std::mutex> m_update_mutex; // guard write to vector
+//        std::vector<std::mutex> m_update_mutex; // guard write to vector
+        std::vector<omp_lock_t> m_update_lock; // guard write to vector
 
-        DistFunc m_df;
+        DistFunc m_df{DistFunc::RUNTIME};
         NDArray m_data;
 
-        std::mutex &GetMutex(internal_id_t vid) {
-            return m_update_mutex.at(vid % m_update_mutex.size());
-        };
+//        std::mutex &GetMutex(internal_id_t vid) {
+//            return m_update_mutex.at(vid % m_update_mutex.size());
+//        };
 
         void Clear() {
             m_is_empty = true;
@@ -92,6 +93,7 @@ namespace pickle::v2 {
             m_node_list.clear();
             m_adj_list.clear();
             m_dist_list.clear();
+            m_update_lock.clear();
             m_data = NDArray();
         };
 
@@ -102,13 +104,13 @@ namespace pickle::v2 {
             return m_is_empty;
         }
 
-        [[nodiscard]] internal_id_t GetSize() const {
-            return m_next_id;
-        }
-
-        [[nodiscard]] size_t GetCapacity() const {
-            return m_capacity;
-        }
+//        [[nodiscard]] internal_id_t GetSize() const {
+//            return m_next_id;
+//        }
+//
+//        [[nodiscard]] size_t GetCapacity() const {
+//            return m_capacity;
+//        }
 
         [[nodiscard]] size_t GetDegree(internal_id_t vid) const {
             return m_node_list.at(vid).m_degree;
@@ -136,6 +138,22 @@ namespace pickle::v2 {
             assert(vid < m_capacity);
             m_node_list.at(vid).m_ext_id = ext_id;
         };
+
+        void LockID(internal_id_t vid) {
+            omp_set_lock(&m_update_lock.at(vid));
+        }
+
+        void UnlockID(internal_id_t vid) {
+            omp_unset_lock(&m_update_lock.at(vid));
+        }
+
+        void PrefetchData(internal_id_t vid) const {
+            m_data.Prefetch(vid);
+        }
+
+        void PrefetchAdj(internal_id_t vid) const {
+            _mm_prefetch(m_adj_list.data() + m_max_degree * vid, _MM_HINT_T0);
+        }
 
         template<class T, size_t Dim>
         [[nodiscard]] std::span<const T, Dim> GetData(internal_id_t vid) {
@@ -240,7 +258,11 @@ namespace pickle::v2 {
             m_dist_list.resize(m_capacity * m_max_degree, std::numeric_limits<distance_t>::max());
             m_node_list.resize(m_capacity);
             m_ext2in_table.resize(max_node_id, empty_internal_id);
-            m_update_mutex = std::vector<std::mutex>(std::max(8192ul, node_capacity));
+//            m_update_mutex = std::vector<std::mutex>(std::min(8192ul, m_capacity));
+            m_update_lock.resize(m_capacity);
+            for (size_t i = 0; i < m_capacity; i++) {
+                omp_init_lock(&m_update_lock.at(i));
+            }
             m_data = NDArray(dtype, shape);
             m_df = df;
         };
@@ -277,13 +299,14 @@ namespace pickle::v2 {
                      std::span<const Entry> R,
                      std::span<const Entry> Pruned,
                      std::span<const T, Dim> vdata) {
+            LockID(vid);
 
             auto buf = GetMutableData<T, Dim>(vid);
             for (size_t i = 0; i < vdata.size(); i++) {
                 buf[i] = vdata[i];
             }
 
-            std::unique_lock<std::mutex> lock{GetMutex(vid)};
+//            std::unique_lock<std::mutex> lock{GetMutex(vid)};
             assert(IsValid(vid));
             assert(vid < m_capacity);
             auto adj = GetAdj(vid);
@@ -304,41 +327,44 @@ namespace pickle::v2 {
             SetDegree(vid, degree);
             SetHeuristic(vid, heuristic);
             assert(IsValid(vid));
+
+            UnlockID(vid);
         }
 
-        void AddEdgePruned(internal_id_t vid, internal_id_t nid, distance_t distance) {
-            auto dist_p = GetDistPruned(vid);
-            auto adj_p = GetAdjPruned(vid);
-            degree_t heuristic = GetHeuristic(vid);
-            degree_t degree = GetDegree(vid);
-            degree_t pruned = degree - heuristic;
-            assert(degree == heuristic + adj_p.size());
-
-            auto offset = std::lower_bound(dist_p.begin(), dist_p.end(), distance) - dist_p.begin();
-            if (offset == pruned && degree < m_max_degree) {
-                adj_p[offset] = nid;
-                dist_p[offset] = distance;
-                SetDegree(vid, degree + 1);
-            } else if (offset < pruned) {
-                int end = (degree < m_max_degree) ? pruned : pruned - 1;
-                for (int i = end; i >= offset; i--){
-                    adj_p[i] = adj_p[i - 1];
-                    dist_p[i] = dist_p[i - 1];
-                }
-                adj_p[offset] = nid;
-                dist_p[offset] = distance;
-                degree += (degree < m_max_degree);
-                SetDegree(vid, degree);
-            }
-        }
+//        void AddEdgePruned(internal_id_t vid, internal_id_t nid, distance_t distance) {
+//            auto dist_p = GetDistPruned(vid);
+//            auto adj_p = GetAdjPruned(vid);
+//            degree_t heuristic = GetHeuristic(vid);
+//            degree_t degree = GetDegree(vid);
+//            degree_t pruned = degree - heuristic;
+//            assert(degree == heuristic + adj_p.size());
+//
+//            auto offset = std::lower_bound(dist_p.begin(), dist_p.end(), distance) - dist_p.begin();
+//            if (offset == pruned && degree < m_max_degree) {
+//                adj_p[offset] = nid;
+//                dist_p[offset] = distance;
+//                SetDegree(vid, degree + 1);
+//            } else if (offset < pruned) {
+//                int end = (degree < m_max_degree) ? pruned : pruned - 1;
+//                for (int i = end; i >= offset; i--){
+//                    adj_p[i] = adj_p[i - 1];
+//                    dist_p[i] = dist_p[i - 1];
+//                }
+//                adj_p[offset] = nid;
+//                dist_p[offset] = distance;
+//                degree += (degree < m_max_degree);
+//                SetDegree(vid, degree);
+//            }
+//        }
 
         template<class T, size_t Dim>
         void AddEdge(internal_id_t vid, internal_id_t nid, distance_t distance) {
-            std::unique_lock<std::mutex> lock{GetMutex(vid)};
+//            std::unique_lock<std::mutex> lock{GetMutex(vid)};
+            LockID(vid);
             assert(IsValid(vid));
-            degree_t heuristic = GetHeuristic(vid);
             auto adj = GetAdj(vid);
             auto dist = GetDist(vid);
+            degree_t heuristic = GetHeuristic(vid);
             auto offset = std::lower_bound(dist.begin(), dist.begin() + heuristic, distance) - dist.begin();
             auto v2span = adj.subspan(0, offset);
 
@@ -347,7 +373,7 @@ namespace pickle::v2 {
             bool insert_n{true};
             for (const auto &v2_id: v2span) {
                 std::span<const T, Dim> v2_data = GetData<T, Dim>(v2_id);
-                auto n_v2_dist = Distance(n_data, v2_data, m_df);
+                auto n_v2_dist = Distance<T, Dim>(n_data, v2_data, m_df);
                 // v1 is only inserted if it is closer to the query than any v2
                 // this step avoids adding only nearby nodes to the query's adj list
                 // it allows remote edges to be added as well
@@ -358,7 +384,27 @@ namespace pickle::v2 {
             }
 
             if (!insert_n) {
-                AddEdgePruned(vid, nid, distance);
+//                AddEdgePruned(vid, nid, distance);
+                auto dist_p = GetDistPruned(vid);
+                auto adj_p = GetAdjPruned(vid);
+                degree_t degree = adj.size();
+                degree_t pruned = degree - heuristic;
+                auto offset = std::lower_bound(dist_p.begin(), dist_p.end(), distance) - dist_p.begin();
+                if (offset == pruned && degree < m_max_degree) {
+                    adj_p[offset] = nid;
+                    dist_p[offset] = distance;
+                    SetDegree(vid, degree + 1);
+                } else if (offset < pruned) {
+                    int end = (degree < m_max_degree) ? pruned : pruned - 1;
+                    for (int i = end; i >= offset; i--){
+                        adj_p[i] = adj_p[i - 1];
+                        dist_p[i] = dist_p[i - 1];
+                    }
+                    adj_p[offset] = nid;
+                    dist_p[offset] = distance;
+                    degree += (degree < m_max_degree);
+                    SetDegree(vid, degree);
+                }
                 assert(IsValid(vid));
             } else {
                 // need to update both R and Pruned
@@ -385,7 +431,7 @@ namespace pickle::v2 {
                         auto v2_id = adj[i];
                         auto v2_q_dist = dist[i];
                         auto v2_data = GetData<T, Dim>(v2_id);
-                        auto v2_v1_dist = Distance(v1_data, v2_data, m_df);
+                        auto v2_v1_dist = Distance<T, Dim>(v1_data, v2_data, m_df);
                         if (v2_v1_dist < v1_q_dist) {
                             insert_v1 = false;
                             break;
@@ -414,8 +460,8 @@ namespace pickle::v2 {
                 SetHeuristic(vid, cur_h_size);
                 SetDegree(vid, cur_deg);
                 assert(IsValid(vid));
-
             }
+            UnlockID(vid);
         };
     };
 

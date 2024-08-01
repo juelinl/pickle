@@ -40,6 +40,7 @@ namespace pickle {
         size_t small_page_size{4096}; // 4KiB per page
         size_t mid_page_size{32768}; // 32KiB per page
         size_t large_page_size{1048576}; // 1MiB per page
+
         std::vector<void *> alloc_small_page;
         std::vector<void *> free_small_page;
 
@@ -141,7 +142,7 @@ namespace pickle {
             }
         }
 
-        static WorkMemoryPool& Global() {
+        static WorkMemoryPool& ThreadLocal() {
             thread_local WorkMemoryPool pool;
             return pool;
         }

@@ -32,6 +32,7 @@ std::shared_ptr<faiss::IndexHNSW> build(Config config, Dataset dataset) {
     Timer timer;
     timer.start();
     auto index = std::make_shared<faiss::IndexHNSWFlat>(d, M, metric);
+    index->hnsw.efConstruction = config.build_ef;
     index->add(num_row, dataset.feat.data<float>());
     timer.end();
     size_t graph_size = GetCurrentMemoryUsage() - dataset_size;
@@ -48,9 +49,6 @@ void bench(Config config, Dataset dataset, std::shared_ptr<faiss::IndexHNSW> ind
     auto logger = GetLogger(config.log_path, "faiss_bench");
     size_t num_row = dataset.query.shape[0];
     size_t num_col = dataset.query.shape[1];
-
-    std::vector<int> all_k{1, 10, 100};
-    std::vector<int> all_search_ef{1, 5, 10, 20, 30, 50, 70, 90, 100, 200, 300};
 
     for (auto k: all_k) {
         for (auto search_ef: all_search_ef) {

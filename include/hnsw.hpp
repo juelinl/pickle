@@ -48,6 +48,10 @@ namespace pickle::v2 {
                             std::span<const T, Dim> query) const;
 
         template<class T, size_t Dim, bool collect_metric=false>
+        MaxHeap SearchLayerFast(internal_id_t enter_id, int level, int ef,
+                                           std::span<const T, Dim> query) const;
+
+        template<class T, size_t Dim, bool collect_metric=false>
         std::vector<Entry> AnnSearch(int top_k, int search_ef, std::span<const T, Dim> query) const;
 
         template<class T, size_t Dim, bool collect_metric=false>
@@ -205,6 +209,14 @@ namespace pickle::v2 {
                      internal_id_t level) {
             return m_hnsw_layers.at(level)->AddNode<T, Dim>(vid, R, Pruned, vdata);
         }
+
+        void PrefetchAdj(internal_id_t vid, int level) const {
+            m_hnsw_layers.at(level)->PrefetchAdj(vid);
+        }
+
+        void PrefetchData(internal_id_t vid, int level) const {
+            m_hnsw_layers.at(level)->PrefetchData(vid);
+        }
     };
 
     void HNSWGraph::InitBuffer(size_t max_nodes) {
@@ -292,12 +304,22 @@ namespace pickle::v2 {
     template<class T, size_t Dim, bool collect_metric>
     MaxHeap HNSWGraph::SearchLayer(internal_id_t enter_id, int level, int ef,
                                    std::span<const T, Dim> query) const {
+
+        if (level==0) {
+            return SearchLayerFast<T, Dim, collect_metric>(enter_id, level, ef, query);
+        }
         assert(!empty(level));
         MinHeap top_candidates{};
         MaxHeap nearest_neighbors{};
 
+        // local variables for profiling
+        int num_hop{0};
+        int num_dist{0};
+        int num_neighbor{0};
+
         assert(top_candidates.begin() != nearest_neighbors.begin());
-        auto &visited = VisitedTable::Global(m_capacity, GetNumNode(level));
+//        auto &visited = BitMap::ThreadLocal(m_capacity, GetNumNode(level));
+        auto &visited = ByteMap::ThreadLocal(level, int(m_hnsw_layers.size()), GetNumNode(level));
         auto ent_data = GetData<T, Dim>(enter_id, level);
         auto ent_dist = Distance(query, ent_data, m_df);
         Entry entry(ent_dist, enter_id);
@@ -315,14 +337,14 @@ namespace pickle::v2 {
             auto c_adj = GetAdj(c_id, level);
 
             if (collect_metric) {
-                Profiler::Global()->AddHop(1);
-                Profiler::Global()->AddNeighbor(c_adj.size());
+                num_hop++;
+                num_neighbor += int(c_adj.size());
             }
 
             for (int vid: c_adj) {
                 if (!visited.IsVisited(vid)) {
                     if (collect_metric) {
-                        Profiler::Global()->AddDist(1);
+                        num_dist++;
                     }
                     visited.Mark(vid);
                     auto v_data = GetData<T, Dim>(vid, level);
@@ -337,7 +359,87 @@ namespace pickle::v2 {
                 }
             }
         }
+
+        if (collect_metric) {
+            Profiler::Global()->AddDist(level, num_dist);
+            Profiler::Global()->AddNeighbor(level, num_neighbor);
+            Profiler::Global()->AddHop(level, num_hop);
+        }
+
         visited.Advance();
+        return nearest_neighbors;
+    };
+
+    // prefetch is not helpful in current data layout
+    template<class T, size_t Dim, bool collect_metric>
+    MaxHeap HNSWGraph::SearchLayerFast(internal_id_t enter_id, int level, int ef,
+                                   std::span<const T, Dim> query) const {
+        assert(!empty(level));
+        auto &visited = ByteMap::ThreadLocal(level, int(m_hnsw_layers.size()), GetNumNode(level));
+        PrefetchAdj(enter_id, level);
+        PrefetchData(enter_id, level);
+        visited.Prefetch(enter_id);
+
+        // local variables for profiling
+        int num_hop{0};
+        int num_dist{0};
+        int num_neighbor{0};
+
+        MinHeap top_candidates{};
+        MaxHeap nearest_neighbors{};
+        auto ent_data = GetData<T, Dim>(enter_id, level);
+        auto ent_dist = Distance(query, ent_data, m_df);
+        Entry entry(ent_dist, enter_id);
+
+        nearest_neighbors.insert(entry);
+        top_candidates.insert(entry);
+        visited.Mark(enter_id);
+
+        while (!top_candidates.empty()) {
+            auto top_e = top_candidates.extractTop();
+            auto c_dist = top_e.m_dist;
+            auto c_id = top_e.m_vid;
+            auto f_dist = nearest_neighbors.top().m_dist;
+            if (c_dist > f_dist)
+                break;
+            auto c_adj = GetAdj(c_id, level);
+
+            if constexpr (collect_metric) {
+                num_hop++;
+                num_neighbor += int(c_adj.size());
+            }
+
+            int idx{0};
+            for (internal_id_t vid: c_adj) {
+                const auto next_id = c_adj[++idx];
+                PrefetchData(next_id, level);
+                visited.Prefetch(next_id);
+
+                if (!visited.IsVisited(vid)) {
+                    if constexpr (collect_metric) {
+                        num_dist++;
+                    }
+                    visited.Mark(vid);
+                    auto v_data = GetData<T, Dim>(vid, level);
+                    auto v_dist = Distance(query, v_data, m_df);
+                    if (nearest_neighbors.size() < ef ||
+                        nearest_neighbors.top().m_dist > v_dist) {
+                        nearest_neighbors.insert(v_dist, vid);
+                        top_candidates.insert(v_dist, vid);
+                        if (nearest_neighbors.size() > ef)
+                            nearest_neighbors.pop();
+                    }
+                }
+            }
+        }
+
+        visited.Advance();
+
+        if constexpr (collect_metric) {
+            Profiler::Global()->AddHop(level, num_hop);
+            Profiler::Global()->AddDist(level, num_dist);
+            Profiler::Global()->AddNeighbor(level, num_neighbor);
+        }
         return nearest_neighbors;
     };
 
@@ -345,25 +447,29 @@ namespace pickle::v2 {
     internal_id_t HNSWGraph::SlideLayer(internal_id_t enter_id, int level,
                                         std::span<const T, Dim> query) const {
         assert(!empty(level));
-        auto &visited = VisitedTable::Global(m_capacity, GetNumNode(level));
+//        auto &visited = BitMap::ThreadLocal(m_capacity, GetNumNode(level));
+        auto &visited = ByteMap::ThreadLocal(level, int(m_hnsw_layers.size()), GetNumNode(level));
         auto c_id = enter_id;
         auto c_data = GetData<T, Dim>(enter_id, level);
         auto c_dist = Distance(query, c_data, m_df);
         visited.Mark(enter_id);
-        if (collect_metric) {
-            Profiler::Global()->AddHop(1);
-        }
+
+        int num_hop{0};
+        int num_dist{0};
+        int num_neighbor{0};
+
         bool updated;
         do {
             updated = false;
             auto c_adj = GetAdj(c_id, level);
             if (collect_metric) {
-                Profiler::Global()->AddNeighbor(c_adj.size());
+                num_hop++;
+                num_neighbor += int(c_adj.size());
             }
             for (const auto vid: c_adj) {
                 if (!visited.IsVisited(vid)) {
                     if (collect_metric) {
-                        Profiler::Global()->AddDist(1);
+                        num_dist++;
                     }
                     auto v_data = GetData<T, Dim>(vid, level);
                     auto v_dist = Distance(query, v_data, m_df);
@@ -378,6 +484,12 @@ namespace pickle::v2 {
         } while (updated);
 
         visited.Advance();
+
+        if constexpr (collect_metric) {
+            Profiler::Global()->AddHop(level, num_hop);
+            Profiler::Global()->AddDist(level, num_dist);
+            Profiler::Global()->AddNeighbor(level, num_neighbor);
+        }
         return c_id;
     };
 
@@ -407,7 +519,8 @@ namespace pickle::v2 {
         }
 
         enter_in_id = GetEntInID(enter_ext_id, 0);
-        auto res = SearchLayer<T, Dim, collect_metric>(enter_in_id, 0, search_ef, query);
+//        auto res = SearchLayer<T, Dim, collect_metric>(enter_in_id, 0, search_ef, query);
+        auto res = SearchLayerFast<T, Dim, collect_metric>(enter_in_id, 0, search_ef, query);
         return SelectSimpleExt(top_k, res);
     };
 

@@ -13,16 +13,19 @@ namespace pickle
     class Profiler
     {
     private:
-        std::atomic<size_t> num_hop;
-        std::atomic<size_t> num_neighbor;
-        std::atomic<size_t> num_dist;
+        static constexpr size_t max_level{16};
+        std::array<std::atomic<int>, max_level> m_hop;
+        std::array<std::atomic<int>, max_level> m_neighbor;
+        std::array<std::atomic<int>, max_level> m_dist;
 
     public:
         Profiler() = default;
         void Reset() {
-            num_hop = 0;
-            num_neighbor = 0;
-            num_dist = 0;
+            for (int i = 0; i < max_level; i++){
+                m_hop[i] = 0;
+                m_neighbor[i] = 0;
+                m_dist[i] = 0;
+            }
         }
 
         static std::shared_ptr<Profiler> Global() {
@@ -30,28 +33,38 @@ namespace pickle
             return profiler;
         };
 
-        size_t GetHop() {
-            return num_hop;
+        int GetHop() {
+            return std::accumulate(m_hop.begin(), m_hop.end(), 0);
         }
 
-        size_t GetDist() {
-            return num_dist;
+        int GetHop(int level) {
+            return m_hop[level];
         }
 
-        size_t GetNeighbor() {
-            return num_neighbor;
+        int GetDist() {
+            return std::accumulate(m_dist.begin(), m_dist.end(), 0);
         }
 
-        void AddHop(size_t n) {
-            num_hop += n;
+        int GetDist(int level) {
+            return m_dist[level];
         }
 
-        void AddDist(size_t n) {
-            num_dist += n;
+        int GetNeighbor() {
+            return std::accumulate(m_neighbor.begin(), m_neighbor.end(), 0);
         }
 
-        void AddNeighbor(size_t n) {
-            num_neighbor += n;
+        int GetNeighbor(int level) {
+            return m_neighbor[level];
+        }
+
+        void AddHop(int level, int num) {
+            m_hop[level] += num;
+        }
+        void AddNeighbor(int level, int num) {
+            m_neighbor[level] += num;
+        }
+        void AddDist(int level, int num) {
+            m_dist[level] += num;
         }
     };
 }

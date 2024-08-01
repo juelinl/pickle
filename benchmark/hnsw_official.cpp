@@ -54,9 +54,6 @@ void bench(Config config, Dataset dataset) {
 
     auto alg_hnsw = new hnswlib::HierarchicalNSW<DistanceType>(&space, config.index_path);
 
-    std::vector<int> all_k{1, 10, 100};
-    std::vector<int> all_search_ef{1, 5, 10, 20, 30, 50, 70, 90, 100, 200, 300};
-
     for (auto k: all_k) {
         for (auto search_ef: all_search_ef) {
             if (search_ef < k) continue;

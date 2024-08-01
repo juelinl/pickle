@@ -3,13 +3,28 @@
 //
 
 #include <omp.h>
-//#include "backup/hnsw_v0.hpp"
-//#include "hnsw_v1.hpp"
 #include "hnsw.hpp"
 #include "bench_util.hpp"
 
-//using namespace pickle::v0;
-//using namespace pickle::v1;
+#define ATEN_DIM_SWITCH(val, DIM, ...)                                         \
+  do {                                                                         \
+    if (val == 128) {                                                           \
+      constexpr size_t DIM = 128;                                               \
+      { __VA_ARGS__ }                                                          \
+    } else if (val == 100) {                                                    \
+      constexpr size_t DIM = 100;                                               \
+      { __VA_ARGS__ }                                                          \
+    } else if (val == 96) {                                                    \
+      constexpr size_t DIM = 96;                                               \
+      { __VA_ARGS__ }                                                          \
+    } else if (val == 200) {                                                    \
+      constexpr size_t DIM = 200;                                               \
+      { __VA_ARGS__ }                                                          \
+    } else {                                                                   \
+      const size_t DIM = std::dynamic_extent;                                  \
+      { __VA_ARGS__ }                                                          \
+    }                                                                          \
+  } while (0)
 
 using namespace pickle::v2;
 
@@ -30,7 +45,10 @@ std::shared_ptr<HNSWGraph> build(const Config &config, Dataset dataset) {
     timer.start();
     auto index = std::make_shared<HNSWGraph>(config.max_degree, config.build_ef, config.df);
     ATEN_DTYPE_SWITCH(dataset.dtype, DType, {
-        index->Build<DType, std::dynamic_extent>(ext_ids, all_data);
+        ATEN_DIM_SWITCH(num_col, Dim, {
+            index->Build<DType, Dim>(ext_ids, all_data);
+        });
+//        index->Build<DType, std::dynamic_extent>(ext_ids, all_data);
     });
     timer.end();
 
@@ -49,9 +67,8 @@ void bench(Config config, Dataset dataset, std::shared_ptr<HNSWGraph> index) {
     auto logger = GetLogger(config.log_path, "pickle_bench");
     size_t dataset_size = GetCurrentMemoryUsage();
     size_t num_row = dataset.query.shape[0];
+    size_t num_col = dataset.query.shape[1];
     NDArray all_query(dataset.query.data_holder, dataset.dtype, dataset.query.shape);
-    std::vector<int> all_k{1, 10, 100};
-    std::vector<int> all_search_ef{1, 5, 10, 20, 30, 50, 70, 90, 100, 200, 300};
 
     for (auto k: all_k) {
         for (auto search_ef: all_search_ef) {
@@ -62,7 +79,9 @@ void bench(Config config, Dataset dataset, std::shared_ptr<HNSWGraph> index) {
             Timer timer;
             timer.start();
             ATEN_DTYPE_SWITCH(dataset.dtype, DType, {
-                results = index->AnnSearch<DType, std::dynamic_extent, false>(k, search_ef, all_query);
+                ATEN_DIM_SWITCH(num_col, Dim, {
+                    results = index->AnnSearch<DType, Dim, false>(k, search_ef, all_query);
+                });
             });
             timer.end();
 
@@ -93,12 +112,14 @@ void bench(Config config, Dataset dataset, std::shared_ptr<HNSWGraph> index) {
             double recall = 100.0 * total_matched / (k * num_row);
             double qps = 1.0 * num_row / timer.seconds() / config.num_threads;
             double hop = 1.0 * Profiler::Global()->GetHop() / num_row;
+            double base_hop = 1.0 * Profiler::Global()->GetHop(0) / num_row;
             double dist = 1.0 * Profiler::Global()->GetDist() / num_row;
-            double neighbor = 1.0 * Profiler::Global()->GetNeighbor() / num_row;
+            double base_dist = 1.0 * Profiler::Global()->GetDist(0) / num_row;
+
             auto build_ef = config.build_ef;
             auto thread = omp_get_max_threads();
-            logger->info("k={} search_ef={} recall={:.1f} qps/t={} hop={:.1f} dist={:.1f} build_ef={} thread={}", k,
-                         search_ef, recall, int(qps), hop, dist, build_ef, thread);
+            logger->info("k={} search_ef={} recall={:.1f} qps/t={} hop={:.1f} dist={:.1f} base_hop={:.1f} base_dist={:.1f} build_ef={} thread={}", k,
+                         search_ef, recall, int(qps), hop, dist, base_hop, base_dist, build_ef, thread);
         }
     }
 }
