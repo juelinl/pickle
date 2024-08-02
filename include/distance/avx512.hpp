@@ -33,11 +33,12 @@ namespace pickle::avx512 {
         }
         _mm512_store_si512((__m512i *) TmpRes, temp);
 
+        int remain{0};
 #pragma unroll
         for (size_t j = Main; j < va.size(); j++) {
-            TmpRes[0] += (va[j] - vb[j]) * (va[j] - vb[j]);
+            remain += (va[j] - vb[j]) * (va[j] - vb[j]);
         }
-        return Sum16(TmpRes);
+        return Sum16(TmpRes) + remain;
     };
 
     template<size_t Extent = std::dynamic_extent>
@@ -61,11 +62,12 @@ namespace pickle::avx512 {
         }
         _mm512_store_si512((__m512i *) TmpRes, temp);
 
+        int remain{0};
 #pragma unroll
         for (size_t j = Main; j < va.size(); j++) {
-            TmpRes[0] += (va[j] - vb[j]) * (va[j] - vb[j]);
+            remain += va[j] * vb[j];
         }
-        return Sum16(TmpRes);
+        return Sum16(TmpRes) + remain;
     };
 
     template<size_t Extent = std::dynamic_extent>
@@ -90,11 +92,12 @@ namespace pickle::avx512 {
         }
         _mm512_store_si512((__m512i *) TmpRes, temp);
 
+        int remain{0};
 #pragma unroll
         for (size_t j = Main; j < va.size(); j++) {
-            TmpRes[0] += (va[j] - vb[j]) * (va[j] - vb[j]);
+            remain += (va[j] - vb[j]) * (va[j] - vb[j]);
         }
-        return Sum16(TmpRes);
+        return Sum16(TmpRes) + remain;
     };
 
     template<size_t Extent = std::dynamic_extent>
@@ -117,12 +120,12 @@ namespace pickle::avx512 {
                     temp, _mm512_cvtepi16_epi32(_mm512_extracti64x4_epi64(diff_sq, 1)));
         }
         _mm512_store_si512((__m512i *) TmpRes, temp);
-
+        int remain{0};
 #pragma unroll
         for (size_t j = Main; j < va.size(); j++) {
-            TmpRes[0] += (va[j] - vb[j]) * (va[j] - vb[j]);
+            remain += va[j] * vb[j];
         }
-        return Sum16(TmpRes);
+        return Sum16(TmpRes) + remain;
     };
 
     template<size_t Extent = std::dynamic_extent>
@@ -144,13 +147,13 @@ namespace pickle::avx512 {
             temp = _mm512_add_ps(temp, _mm512_mul_ps(diff, diff));
         }
         _mm512_store_ps(TmpRes, temp);
-
+        
+        float remain{0};
 #pragma unroll
         for (size_t j = Main; j < va.size(); j++) {
-            TmpRes[0] += (va[j] - vb[j]) * (va[j] - vb[j]);
+            remain += (va[j] - vb[j]) * (va[j] - vb[j]);
         }
-
-        return Sum16(TmpRes);
+        return Sum16(TmpRes) + remain;
     };
 
     template<size_t Extent = std::dynamic_extent>
@@ -173,12 +176,12 @@ namespace pickle::avx512 {
         }
         _mm512_store_ps(TmpRes, temp);
 
+        float remain{0};
 #pragma unroll
         for (size_t j = Main; j < va.size(); j++) {
-            TmpRes[0] += (va[j] - vb[j]) * (va[j] - vb[j]);
+            remain += va[j] * vb[j];
         }
-
-        return Sum16(TmpRes);
+        return Sum16(TmpRes) + remain;
     };
 
     template<size_t Extent = std::dynamic_extent>
@@ -196,12 +199,12 @@ namespace pickle::avx512 {
 
         _mm512_store_ps(TmpRes, temp);
 
+        float remain{0};
 #pragma unroll
         for (size_t j = Main; j < va.size(); j++) {
-            TmpRes[0] += (va[j] - vb[j]) * (va[j] - vb[j]);
+            remain += (va[j] - vb[j]) * (va[j] - vb[j]);
         }
-
-        return Sum16(TmpRes);
+        return Sum16(TmpRes) + remain;
     };
 
     template<size_t Extent = std::dynamic_extent>
@@ -219,12 +222,12 @@ namespace pickle::avx512 {
 
         _mm512_store_ps(TmpRes, temp);
 
+        float remain{0};
 #pragma unroll
         for (size_t j = Main; j < va.size(); j++) {
-            TmpRes[0] += (va[j] - vb[j]) * (va[j] - vb[j]);
+            remain += va[j] * vb[j];
         }
-
-        return Sum16(TmpRes);
+        return Sum16(TmpRes) + remain;
     };
 
     template<class T, std::size_t Extent = std::dynamic_extent>
