@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-set(MKL_DIR /data/opt/intel/mkl/2024.2/lib/cmake/mkl/)
+set(MKL_DIR ~/intel/oneapi/mkl/latest/lib/cmake/mkl/)
 set(FAISS_ENABLE_GPU OFF)
 set(FAISS_ENABLE_PYTHON OFF)
 set(FAISS_ENABLE_RAFT OFF)

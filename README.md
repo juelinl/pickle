@@ -1,54 +1,86 @@
 # Pickle
-Research on efficient approximate nearest neighbor search (ANNS).
 
-# Direction I
-Ideally, an efficient index would have both a small memory footprint and an optimized memory layout for ANNS. (A good example would be B-tree for SQL database.)
-However, graph-based indices (etc. HNSW and NND) have a small memory footprint but they suffer from small random memory accesses, whereas clustered indices (SPANN and SPFresh) suffer from excessive memory footprint when compared to graph-based indices.
+HNSW revisited.
 
-Thus, we ask the question: Can graph index and cluster index have a happy marriage? 
+## Table of Contents
 
-## TLDR
-The main challenge is to build an index with an optimized memory layout without increasing memory footprints significantly. 
-It turns out to be a very difficult challenge.
+- [About](#about)
+- [Features](#features)
+- [Benchmark](#Benchmark)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+- [Usage](#usage)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
 
-## Observation & Motivation
+## About
 
-1. Distance computation is one of the main bottlenecks of ANNS.
-2. Distance computation efficiency is sensitive to memory layout.
-3. Graph index relies on small random memory accesses.
-4. Cluster index suffers from excessive memory load.
+Pickle is an implementation of HNSW index that supports parallel graph indexing and search. 
 
-## Approach: Graph Index With Hub Nodes
-A potential solution is to use a graph-based index with hub nodes. In this solution, the graph index is extended with hub nodes, which have two key properties: they have high degree and are frequently visited by many queries. The neighborhood of a hub node is stored as a bucket containing the vectors of all the neighboring nodes. This enables efficient batched distance computation implemented in terms of matrix multiplication. These vectors may be replicas of the primary copy of the node vector, which may be stored in another memory location outside of the bucket.
+## Features
 
-### Challenge: How to select nodes to be part of the hub nodes?
+Key features of pickle:
+- Efficient multi-threaded graph construction.
+- Achieve similar performance compared to other open-sourced solutions like [HNSWlib](https://github.com/nmslib/hnswlib) and [FAISS](https://github.com/facebookresearch/faiss).
+- Support multiple profiling strategies (query per second, number of distance computation, etc).
+- Header only library.
 
-#### Hypotheses 
-1. Nodes in the top layers of the HNSW index might be good candidates.
-2. Graph access might be skewed, so frequently access nodes can be hub nodes.
-3. The K-means centroids of the graph might be good candidates.
+## Benchmark:
 
-#### Experiment
+We evalute the performance of pickle on a server class machine equipped with dual Intel(R) Xeon(R) Silver 4214R CPU @ 2.40GHz (12 cores / 24 threads each). The server has 384GB of RAM.
 
-#### Analysis 
+We compare pickle with FAISS and HNSWlib in terms of query per second (QPS) and the number of distance caculation required to reach the same level of recall. You can find the results in [plot/figs](plot/figs) and the detailed log in [plot/log.csv](plot/log.csv).
 
-#### Hunch
+## Getting Started
 
+### Prerequisites
 
-# Research Direction II
-Efficient index construction is becoming a real challenge, especially for web-scale datasets. A single host disk-based algorithm (DiskANN) can take days to construct the index for a dataset with 1B nodes. This is where the distributed system comes to the rescue.
-Many interesting questions arise here:
-1. Shall we partition the graph (share nothing) or use shared memory to scale the graph search?
-2. Shall we construct one big index that has many edges or several randomized small indexes and merge their search results? 
+List the software and libraries needed to run your project:
+- C++ compiler (e.g., GCC, Clang, MSVC)
+- CMake
+- [Intel MKL](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl-download.html?operatingsystem=linux&linux-install=apt) (FAISS requires this library)
 
-## TLDR
+Install MKL on Ubuntu (needs 6GB disk space):
+```bash
+cd /tmp
+wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/79153e0f-74d7-45af-b8c2-258941adf58a/intel-onemkl-2025.0.0.940_offline.sh
+sh intel-onemkl-2025.0.0.940_offline.sh -a -s --eula accept
+# The default install directory is ~/intel
+```
 
-# Observation & Motivation
-1. The index construction for graph-based indexes is slow.
-2. The index construction memory overhead can be high.
-3. IVF is fast during construction but slow during the search.
+### Installation
 
-# Research Direction III
-What if the distances between the query and the documents are computed using Transformers (BERT)?
-This makes things interesting because the embedding of the documents cannot be easily computed offline without knowing the query.
-ColBERT tackles it by computing the embedding at the token rather than document level. Can we do better than this?
+Step-by-step guide to set up the project locally:
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/juelinl/pickle.git
+   cd pickle
+   git submodule update --init --recursive
+   ```
+2. Build the project (if using CMake):
+   ```bash
+   mkdir build
+   pushd build
+   cmake .. -DCMAKE_BUILD_TYPE=Release
+   cmake --build ./ -j
+   popd
+   ```
+4. Run the program:
+   ```bash
+   ./build/benchmark/hnsw_pickle -h
+   ```
+
+5. For a more detailed usage, checkout the example script `bench.sh`.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+This project was heavily inspired by the incredible work behind [HNSWlib](https://github.com/nmslib/hnswlib) and [FAISS](https://github.com/facebookresearch/faiss). Both libraries have set high standards for efficient and scalable similarity search, and their implementations served as a foundation for many of the ideas explored in this project.
+
+We would like to extend our gratitude to the creators and maintainers of these libraries for their contributions to the open-source community. Their dedication to building high-performance tools has significantly advanced the field of approximate nearest neighbor search and vector similarity search.
