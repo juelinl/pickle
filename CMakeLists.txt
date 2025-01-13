@@ -37,7 +37,4 @@ link_libraries(OpenMP::OpenMP_CXX)
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
 add_subdirectory(benchmark)
-
 #add_subdirectory(pybind)
-#add_subdirectory(program)
-#add_subdirectory(test)
