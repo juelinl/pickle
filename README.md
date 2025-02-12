@@ -1,6 +1,6 @@
 # Pickle
 
-HNSW revisited.
+HNSW reimplemented.
 
 ## Table of Contents
 
@@ -26,6 +26,7 @@ Key features of pickle:
 - Achieve similar performance compared to other open-sourced solutions like [HNSWlib](https://github.com/nmslib/hnswlib) and [FAISS](https://github.com/facebookresearch/faiss).
 - Support multiple profiling strategies (query per second, number of distance computation, etc).
 - Header only library.
+- Supports various data types (float32, float16, int8, and uint8) with strongly typed object facilitate easy debugging.
 
 ## Benchmark:
 
@@ -34,6 +35,9 @@ We evalute the performance of pickle on a server class machine equipped with dua
 We compare pickle with FAISS and HNSWlib in terms of query per second (QPS) and the number of distance caculation required to reach the same level of recall. You can find the results in [plot/figs](plot/figs) and the detailed log in [plot/log.csv](plot/log.csv).
 
 ## Getting Started
+
+### Datasets
+Refer to [dataset](./dataset/README.md) for preparing and downloading datasets used in the benchmark.
 
 ### Prerequisites
 
